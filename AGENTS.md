@@ -20,8 +20,10 @@ Tool-specific files are intentionally separate:
   roots.
 - `.agents/skills/review-pr/` and `.agents/skills/review-branch/` contain
   Codex-readable review workflow instructions.
-- `scripts/claude.bat` and `scripts/codex.bat` launch each client with the
-  workspace Python environment activated.
+- `scripts/claude.bat` launches Claude Code with the workspace Python
+  environment activated.
+- `scripts/codex.bat` launches Codex without activating a Python environment;
+  use task-specific venv Python executables explicitly.
 
 If the user asks for a code review in natural language, follow the Review
 Workflow section below even when a tool-specific slash command is not available.
@@ -111,6 +113,21 @@ before starting a long-running configure or build.
   `gfx90a`, `gfx110X`, `gfx120X`, and `gfx94X`.
 - Prefer targeted tests that validate the changed behavior before broader test
   runs.
+- For Python changes under `../TheRock/build_tools`, run pytest from the
+  `build_tools` directory with TheRock's own venv Python. Do not rely on an
+  activated venv, bare `python`, or bare `pytest`:
+
+```bash
+cd /d/projects/TheRock/build_tools
+/d/projects/TheRock/.venv/Scripts/python.exe -m pytest tests/<target>_test.py
+```
+
+PowerShell equivalent:
+
+```powershell
+cd D:\projects\TheRock\build_tools
+D:\projects\TheRock\.venv\Scripts\python.exe -m pytest tests\<target>_test.py
+```
 
 ## Playbook
 
@@ -213,7 +230,9 @@ model.
 For Bash or MSYS2-style tool calls:
 
 - Use paths like `/d/projects/...`, not `D:/projects/...`.
-- Prefer `python -m pytest <path>` over bare `pytest`.
+- For TheRock `build_tools` tests, prefer
+  `/d/projects/TheRock/.venv/Scripts/python.exe -m pytest <path>` over bare
+  `python` or `pytest`.
 - Use `pre-commit run` rather than `python -m pre_commit`.
 - Prefer separate tool calls over long `&&` chains when permissions are
   command-pattern based.

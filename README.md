@@ -115,16 +115,15 @@ markdown task files.
 
 ### Python Environment
 
-A Python virtual environment ensures tools like `pytest` are available when
-agents run commands.
+Use task-specific Python environments instead of relying on Codex inheriting an
+activated venv.
 
-One-time setup on Windows:
+For TheRock `build_tools` work, the preferred environment is TheRock's own
+`.venv`:
 
 ```powershell
-cd D:\projects\rocm-workspace
-py -V:3.12 -m venv 3.12.venv
-.\3.12.venv\Scripts\activate.bat
-pip install -r ..\TheRock\requirements.txt
+cd D:\projects\TheRock\build_tools
+D:\projects\TheRock\.venv\Scripts\python.exe -m pytest tests\<target>_test.py
 ```
 
 Launch Claude Code:
@@ -139,9 +138,12 @@ Launch Codex:
 .\scripts\codex.bat
 ```
 
-The launchers activate the workspace venv before starting the selected agent.
-If the workspace directory is copied or renamed, recreate `3.12.venv` so the
-generated activation scripts point at the current path.
+`scripts\codex.bat` does not activate a venv. Codex should run Python tools with
+the appropriate venv Python directly, such as
+`D:\projects\TheRock\.venv\Scripts\python.exe -m pytest` for TheRock
+`build_tools` tests.
+
+`scripts\claude.bat` still activates the workspace `3.12.venv` for Claude Code.
 
 ### Codex Sandbox
 
@@ -152,11 +154,6 @@ repositories and Codex scratch directory as writable roots:
 - `D:/projects/TheRock`
 - `D:/projects/rockrel`
 - `D:/scratch/codex`
-
-The config also sets a narrow `shell_environment_policy.include_only` allow-list
-so Codex sandboxed commands inherit the venv `PATH` and `VIRTUAL_ENV`
-established by [`scripts/codex.bat`](/scripts/codex.bat) without inheriting the
-entire parent environment.
 
 Codex only loads project `.codex/` configuration for trusted projects. If edits
 outside `rocm-workspace` are unexpectedly denied, trust this project in Codex
