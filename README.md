@@ -161,6 +161,11 @@ and restart the session so the sandbox is recreated with the project config.
 Keep the paths in `.codex/config.toml` aligned with
 [`directory-map.md`](/directory-map.md) when moving between machines.
 
+Project-local Codex execution rules live in
+[`.codex/rules/default.rules`](/.codex/rules/default.rules). They allow
+repo-scoped `git add` and `git commit -m` commands for this workspace and
+TheRock after the user asks to commit. They do not allow pushing.
+
 ## Adapting For Another Project
 
 1. Replace ROCm-specific content in [`AGENTS.md`](/AGENTS.md).

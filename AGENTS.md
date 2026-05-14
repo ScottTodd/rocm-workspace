@@ -263,6 +263,12 @@ Commit guidance:
 - First line: concise summary, roughly 50-72 characters.
 - Follow with a blank line and explanatory body when useful.
 - Include testing and verification notes when they matter.
+- When the user asks to commit changes, stage only the relevant files and
+  create the commit. Do not wait for an additional confirmation unless the
+  requested commit scope is ambiguous or includes unrelated changes.
+- Prefer repo-scoped commit commands, for example
+  `git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock ...` for
+  TheRock.
 - Do NOT include issue references such as `Fixes #123` unless the user asks.
 - Do NOT include PR references such as `#123`; PR metadata belongs in PR text.
 - Do NOT add tool-specific AI footers unless the user asks for them or the
