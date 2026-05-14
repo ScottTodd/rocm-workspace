@@ -19,4 +19,12 @@ call "%WORKSPACE_DIR%\3.12.venv\Scripts\activate.bat"
 
 REM Change to workspace directory and launch Codex
 cd /d "%WORKSPACE_DIR%"
-codex %*
+
+REM Allow Codex to work in the common sibling repositories from this
+REM meta-workspace. Missing directories are skipped so the launcher still works
+REM on machines with a partial checkout.
+set CODEX_ADD_DIRS=
+if exist "%WORKSPACE_DIR%\..\TheRock" set CODEX_ADD_DIRS=%CODEX_ADD_DIRS% --add-dir "%WORKSPACE_DIR%\..\TheRock"
+if exist "%WORKSPACE_DIR%\..\rockrel" set CODEX_ADD_DIRS=%CODEX_ADD_DIRS% --add-dir "%WORKSPACE_DIR%\..\rockrel"
+
+codex --sandbox workspace-write %CODEX_ADD_DIRS% %*

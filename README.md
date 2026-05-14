@@ -1,8 +1,8 @@
 # ROCm Workspace
 
-A meta-workspace for work on [ROCm/TheRock](https://github.com/ROCm/TheRock) and
-related projects. This repository serves as a "control center" that provides
-centralized context, tooling, and documentation for AI-assisted development.
+A meta-workspace for work on [ROCm/TheRock](https://github.com/ROCm/TheRock)
+and related projects. This repository provides centralized agent context,
+review workflows, notes, and helper scripts for AI-assisted development.
 
 ## Why a Meta-Workspace?
 
@@ -10,104 +10,112 @@ Build infrastructure work on ROCm involves multiple scattered repositories and
 build directories. Rather than making any single ROCm project the workspace,
 this separate meta-repository:
 
-- Provides centralized context and documentation
-- Maps out where all the various directories live (see
-  [`directory-map.md`](/directory-map.md))
-- Contains workflows, notes, and helper scripts
-- Stays version-controlled without polluting the actual ROCm repositories
+- Provides shared context for Codex and Claude Code
+- Maps local directory locations in [`directory-map.md`](/directory-map.md)
+- Contains review workflows, notes, reports, and helper scripts
+- Stays version-controlled without polluting ROCm source repositories
 
 ## Directory Structure
 
-```
+```text
 rocm-workspace/
-├── CLAUDE.md              # Project context and instructions for Claude Code
-├── directory-map.md       # Map of ROCm directories on your system
-│
-├── tasks/                 # Task management
-│   ├── active/            # Currently active tasks
-│   └── completed/         # Archived completed tasks
-│
-├── reviews/               # Code review system
-│   ├── README.md          # Quick start guide
-│   ├── REVIEW_GUIDELINES.md
-│   ├── REVIEW_TYPES.md
-│   ├── guidelines/        # Domain-specific review checklists
-│   ├── pr_*.md            # PR reviews
-│   └── local_*.md         # Local branch reviews
-│
-├── plans/                 # Implementation plans and design docs
-├── reports/               # Audit reports and analyses
-│
-└── .claude/               # Claude Code configuration
-    ├── commands/          # Slash commands (/task, /review-pr, etc.)
-    ├── agents/            # Custom subagents (build-infra, ci-pipeline)
-    └── settings.json      # Workspace settings
+|-- AGENTS.md              # Canonical shared agent instructions
+|-- CLAUDE.md              # Symlink to AGENTS.md for Claude Code
+|-- directory-map.md       # Map of ROCm directories on this system
+|
+|-- .agents/
+|   `-- skills/            # Codex-readable project skills
+|       |-- review-pr/
+|       `-- review-branch/
+|
+|-- .claude/               # Claude Code configuration
+|   |-- commands/          # Slash commands (/task, /review-pr, etc.)
+|   |-- agents/            # Claude Code subagents
+|   `-- settings.json      # Shared Claude settings
+|
+|-- tasks/                 # Legacy markdown task tracking
+|   |-- active/
+|   `-- completed/
+|
+|-- reviews/               # Code review system and completed reviews
+|   |-- README.md
+|   |-- REVIEW_GUIDELINES.md
+|   |-- REVIEW_TYPES.md
+|   |-- guidelines/
+|   |-- pr_*.md
+|   `-- local_*.md
+|
+|-- plans/                 # Implementation plans and design docs
+|-- reports/               # Audit reports and analyses
+`-- scripts/               # Launchers and helper scripts
 ```
 
-## Key Features
+## Agent Instructions
 
-### Code Review System
+[`AGENTS.md`](/AGENTS.md) is the canonical instruction file. Claude Code reads
+[`CLAUDE.md`](/CLAUDE.md), which is kept as a symlink for compatibility.
 
-The [`reviews/`](/reviews/) directory contains a structured code review system.
+Tool-specific behavior lives outside the shared instructions:
 
-**Quick start:**
+- Claude slash commands: [`.claude/commands/`](/.claude/commands/)
+- Claude subagents: [`.claude/agents/`](/.claude/agents/)
+- Codex review skills: [`.agents/skills/`](/.agents/skills/)
+
+## Code Review System
+
+The [`reviews/`](/reviews/) directory contains the review methodology,
+checklists, and completed reviews.
+
+Request examples:
+
+```text
+Review this PR: https://github.com/ROCm/TheRock/pull/1234
+Review my current branch
+Do a style review of my changes
+Run tests and security reviews in parallel
+```
+
+Claude Code can use the slash commands in [`.claude/commands/`](/.claude/commands/):
+
 ```bash
-/review-pr https://github.com/ROCm/TheRock/pull/1234  # Review a PR
-/review-branch                                        # Review current branch
-/review-branch style tests                            # Focused reviews
+/review-pr https://github.com/ROCm/TheRock/pull/1234
+/review-branch
+/review-branch style tests
 ```
 
-See [`reviews/README.md`](/reviews/README.md) for full documentation.
+Codex can use the project skills:
 
-### Task Management
+- [`review-pr`](/.agents/skills/review-pr/SKILL.md)
+- [`review-branch`](/.agents/skills/review-branch/SKILL.md)
 
-Track and switch between multiple tasks without losing context.
+Review output is written under `reviews/` using the naming conventions in
+[`reviews/README.md`](/reviews/README.md).
 
-**Commands:**
-```bash
-/task task-name                    # Switch to a task
-```
+## Task Tracking
 
-**Workflow:**
-1. Create `tasks/active/your-task.md` (use
-   [`example-task.md`](/tasks/example-task.md) as template)
-2. Switch with `/task your-task` or "I'm working on your-task"
-3. Move to `tasks/completed/` when done
+The existing [`tasks/`](/tasks/) directory is legacy markdown task context.
+This workspace is moving toward [Beads](https://github.com/gastownhall/beads)
+for issue and dependency tracking.
 
-### Custom Agents
-
-Domain-specific subagents in [`.claude/agents/`](/.claude/agents/):
-
-| Agent | Purpose |
-|-------|---------|
-| [`build-infra`](/.claude/agents/build-infra.md) | CMake, meson, pkg-config, ROCm build patterns |
-| [`ci-pipeline`](/.claude/agents/ci-pipeline.md) | GitHub Actions, CI/CD workflows |
-
-### Slash Commands
-
-Available commands in [`.claude/commands/`](/.claude/commands/):
-
-| Command | Description |
-|---------|-------------|
-| [`/task <name>`](/.claude/commands/task.md) | Switch to a task |
-| [`/review-pr <URL>`](/.claude/commands/review-pr.md) | Review a GitHub PR |
-| [`/review-branch`](/.claude/commands/review-branch.md) | Review current local branch |
-| [`/wip`](/.claude/commands/wip.md) | Quick WIP commit |
+Beads is not initialized by this repository yet. Once the `bd` CLI is installed
+and the user chooses to initialize it, agents should prefer `bd prime`,
+`bd ready`, `bd show`, `bd update --claim`, and `bd close` over creating new
+markdown task files.
 
 ## Setup
 
-1. Clone this repository
-2. Update `directory-map.md` with your actual directory paths
-3. Customize `CLAUDE.md` with your project-specific context
-4. Set up the Python environment (see below)
-5. Run Claude Code using the launcher script
+1. Clone this repository.
+2. Update [`directory-map.md`](/directory-map.md) with your actual paths.
+3. Set up the Python environment.
+4. Launch either Claude Code or Codex with the matching script.
 
 ### Python Environment
 
 A Python virtual environment ensures tools like `pytest` are available when
-Claude runs commands.
+agents run commands.
 
-**One-time setup (Windows):**
+One-time setup on Windows:
+
 ```powershell
 cd D:\projects\rocm-workspace
 py -V:3.12 -m venv 3.12.venv
@@ -115,20 +123,25 @@ py -V:3.12 -m venv 3.12.venv
 pip install -r ..\TheRock\requirements.txt
 ```
 
-**Launching Claude:**
+Launch Claude Code:
+
 ```powershell
 .\scripts\claude.bat
 ```
 
-The launcher script activates the venv before starting Claude, so Python tools
-are available in the session.
+Launch Codex:
 
-## Adapting for Your Project
+```powershell
+.\scripts\codex.bat
+```
 
-This workspace pattern can be adapted for any multi-repository project:
+The launchers activate the workspace venv before starting the selected agent.
 
-1. Fork this repository
-2. Replace ROCm-specific content in `CLAUDE.md`
-3. Update `directory-map.md` for your environment
-4. Customize the review guidelines for your project's conventions
-5. Add task templates relevant to your work
+## Adapting For Another Project
+
+1. Replace ROCm-specific content in [`AGENTS.md`](/AGENTS.md).
+2. Keep tool-specific config under `.claude/`, `.agents/`, or client-specific
+   launch scripts.
+3. Update [`directory-map.md`](/directory-map.md).
+4. Customize the review guidelines for the project's conventions.
+5. Choose a task tracker; this repo is experimenting with Beads.

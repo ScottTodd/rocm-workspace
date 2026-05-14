@@ -51,10 +51,10 @@ See [REVIEW_TYPES.md](REVIEW_TYPES.md) for detailed descriptions.
 ## How It Works
 
 1. **You request a review** with specific focus areas
-2. **Claude analyzes** your code with that focus in mind
+2. **The agent analyzes** your code with that focus in mind
 3. **Review is written** to `reviews/pr_{REPO}_{NUMBER}.md` or `reviews/local_{COUNTER}_{branch-name}.md` (with `_{TYPE}` suffix for focused reviews)
 4. **You address issues** based on severity (❌ BLOCKING, ⚠️ IMPORTANT, 💡 SUGGESTION)
-5. **Claude can re-review** after you fix blocking issues
+5. **The agent can re-review** after you fix blocking issues
 
 ---
 
@@ -127,7 +127,7 @@ Examples:
 - `reviews/local_001_users-myname-fix-bug_style.md` - style-focused review
 - `reviews/local_002_add-new-feature.md` - next local review
 
-**Counter:** Use incrementing numbers (001, 002, etc.) for chronological ordering. Claude will scan existing files to determine the next number.
+**Counter:** Use incrementing numbers (001, 002, etc.) for chronological ordering. The agent will scan existing files to determine the next number.
 
 **Branch name sanitization:** Slashes are converted to dashes (e.g., `users/myname/fix-bug` → `users-myname-fix-bug`). Other characters in branch names (including dashes) are preserved.
 
@@ -165,7 +165,7 @@ reviews/
 ```
 User: "Review my current branch"
 
-Claude:
+Agent:
 - Analyzes all aspects (style, tests, docs, architecture, security, performance)
 - Creates reviews/local_001_my-branch-name.md
 - Provides comprehensive assessment with all severity levels
@@ -176,7 +176,7 @@ Claude:
 ```
 User: "Do a style review of my refactoring"
 
-Claude:
+Agent:
 - Focuses only on code style, formatting, naming
 - Creates reviews/local_001_my-branch-name_style.md
 - Ignores other aspects (tests, architecture, etc.)
@@ -187,7 +187,7 @@ Claude:
 ```
 User: "Run tests and documentation reviews in parallel"
 
-Claude:
+Agent:
 - Launches two review agents simultaneously
 - One analyzes test coverage
 - One analyzes documentation
@@ -198,12 +198,12 @@ Claude:
 
 ```
 User: "Review my branch"
-Claude: [Creates comprehensive review with blocking issues]
+Agent: [Creates comprehensive review with blocking issues]
 
 User: [Fixes blocking issues]
 
 User: "Re-review the changes"
-Claude: [Creates updated review, verifies fixes]
+Agent: [Creates updated review, verifies fixes]
 ```
 
 ---
@@ -282,13 +282,13 @@ You can request custom review criteria:
 "Review for Windows compatibility issues"
 ```
 
-Claude will adapt the review to your specific needs.
+The agent will adapt the review to your specific needs.
 
 ---
 
 ## Questions?
 
-Ask Claude:
+Ask the agent:
 
 - "What review type should I use for [scenario]?"
 - "Explain this review finding in more detail"

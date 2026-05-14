@@ -365,7 +365,7 @@ When multiple review types run in parallel, they're combined into sections:
 
 ## Tips for Effective Reviews
 
-### For the Reviewer (Claude)
+### For the Reviewer
 
 1. **Stay focused:** When doing a focused review, ignore issues outside that scope
 2. **Be thorough:** Within the focus area, be comprehensive

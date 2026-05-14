@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Branch"
+  short_description: "Review the current local branch"
+  default_prompt: "Use $review-branch to review the current local branch."
