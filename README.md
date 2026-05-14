@@ -140,6 +140,8 @@ Launch Codex:
 ```
 
 The launchers activate the workspace venv before starting the selected agent.
+If the workspace directory is copied or renamed, recreate `3.12.venv` so the
+generated activation scripts point at the current path.
 
 ### Codex Sandbox
 
@@ -147,9 +149,14 @@ Codex sandbox defaults are checked in at [`.codex/config.toml`](/.codex/config.t
 That file keeps Codex in `workspace-write` mode and adds the common sibling
 repositories and Codex scratch directory as writable roots:
 
-- `../TheRock`
-- `../rockrel`
+- `D:/projects/TheRock`
+- `D:/projects/rockrel`
 - `D:/scratch/codex`
+
+The config also sets a narrow `shell_environment_policy.include_only` allow-list
+so Codex sandboxed commands inherit the venv `PATH` and `VIRTUAL_ENV`
+established by [`scripts/codex.bat`](/scripts/codex.bat) without inheriting the
+entire parent environment.
 
 Codex only loads project `.codex/` configuration for trusted projects. If edits
 outside `rocm-workspace` are unexpectedly denied, trust this project in Codex

@@ -10,11 +10,40 @@ approval_policy = "on-request"
 [windows]
 sandbox = "elevated"
 
+[shell_environment_policy]
+# scripts/codex.bat activates the workspace venv before launching Codex. Keep
+# the inherited environment narrow while preserving the variables needed for
+# Python, Windows process startup, and common developer tools.
+inherit = "all"
+include_only = [
+  "PATH",
+  "PATHEXT",
+  "VIRTUAL_ENV",
+  "VIRTUAL_ENV_PROMPT",
+  "COMSPEC",
+  "SystemDrive",
+  "SystemRoot",
+  "WINDIR",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "ProgramData",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "ProgramW6432",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "PROCESSOR_LEVEL",
+  "PROCESSOR_REVISION",
+  "NUMBER_OF_PROCESSORS",
+]
+
 [sandbox_workspace_write]
-# Keep these paths aligned with directory-map.md. The sibling repository paths
-# are relative to this workspace layout; the scratch path is Windows-specific.
+# Keep these paths aligned with directory-map.md.
 writable_roots = [
-  "../TheRock",
-  "../rockrel",
+  "D:/projects/TheRock",
+  "D:/projects/rockrel",
   "D:/scratch/codex",
 ]
