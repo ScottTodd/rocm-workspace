@@ -6,41 +6,58 @@
 
 # ============================================================
 # File 1: multi_arch_release_linux_pytorch_wheels.yml
-# (orchestrator — owns the matrix, dispatches per-cell)
+# (orchestrator -- owns the build matrix, dispatches per-cell)
 # ============================================================
 # Triggered by: multi_arch_release_linux.yml (via workflow_dispatch)
-# Inputs from parent: amdgpu_families, rocm_version,
-#   rocm_package_find_links_url, release_type, ref
+# Also triggerable directly for developer use
+
+on:
+  workflow_call:
+    inputs:
+      amdgpu_families: {type: string, required: true}
+      rocm_version: {type: string, required: true}
+      rocm_package_find_links_url: {type: string, required: true}
+      release_type: {type: string, required: true}
+      ref: {type: string}
+      # Developer overrides (narrow what gets built/tested):
+      python_versions:
+        description: "Space-separated (empty = all per policy)"
+        type: string
+        default: ""
+      pytorch_git_refs:
+        description: "Space-separated (empty = all per policy)"
+        type: string
+        default: ""
+      test_families_override:
+        description: "Semicolon-separated families to test (empty = all with runners)"
+        type: string
+        default: ""
+      # TODO: test_level_override (smoke/full/none) for pre-stable validation
 
 jobs:
   generate_manifest:
-    # Lightweight job: resolve refs, fetch version.txt, compute versions.
-    # One manifest per pytorch_git_ref (version.txt differs per ref).
-    # No full clones — GitHub API only.
     runs-on: ubuntu-24.04
     outputs:
-      manifest_s3_prefix: ${{ steps.generate.outputs.manifest_s3_prefix }}
-      build_matrix: ${{ steps.generate.outputs.build_matrix }}
+      manifest_s3_prefix: "..."
+      build_matrix: "..."  # JSON: [{pytorch_git_ref, python_version}, ...]
     steps:
       - # Checkout TheRock (for scripts)
-      - id: generate
-        run: |
-          python build_tools/github_actions/generate_pytorch_manifest_upfront.py \
-            --rocm-version ${{ inputs.rocm_version }} \
-            --upload-to-s3
-          # Outputs:
-          #   manifest_s3_prefix: s3://bucket/run-id/manifests/
-          #   build_matrix: JSON array of {pytorch_git_ref, python_version}
-          #     (with exclusions applied, e.g. no py3.14 for torch 2.8)
+      - # generate_pytorch_manifest_upfront.py:
+        #   - resolve pytorch refs -> commits (GitHub API)
+        #   - fetch version.txt per repo at resolved commit
+        #   - compute versions (base + rocm suffix)
+        #   - write manifest JSONs to S3
+        #   - compute build matrix (pytorch_git_ref x python_version)
+        #     with exclusions (e.g. no py3.14 for torch 2.8)
+        #   - apply python_versions / pytorch_git_refs overrides if provided
 
   build_and_test:
     needs: [generate_manifest]
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.generate_manifest.outputs.build_matrix) }}
-      # Each cell is one (pytorch_git_ref, python_version) combination.
-      # Example cell: {pytorch_git_ref: "release/2.10", python_version: "3.12"}
     uses: ./.github/workflows/build_and_test_multiarch_pytorch.yml
+    secrets: inherit
     with:
       pytorch_git_ref: ${{ matrix.pytorch_git_ref }}
       python_version: ${{ matrix.python_version }}
@@ -50,64 +67,59 @@ jobs:
       rocm_package_find_links_url: ${{ inputs.rocm_package_find_links_url }}
       release_type: ${{ inputs.release_type }}
       ref: ${{ inputs.ref }}
+      test_families_override: ${{ inputs.test_families_override }}
 
 
 # ============================================================
 # File 2: build_and_test_multiarch_pytorch.yml
-# (reusable workflow — one per (pytorch_git_ref, python_version))
+# (reusable per-cell workflow -- one per pytorch_ref x python_version)
+# Also dispatchable independently for debugging.
 # ============================================================
-# Called by: multi_arch_release_linux_pytorch_wheels.yml matrix
-# Contains: build job + test job(s) with inner family matrix
 
 on:
   workflow_call:
     inputs:
-      pytorch_git_ref: {type: string}
-      python_version: {type: string}
+      pytorch_git_ref: {type: string, required: true}
+      python_version: {type: string, required: true}
       manifest_s3_prefix: {type: string}
-      amdgpu_families: {type: string}
-      rocm_version: {type: string}
-      rocm_package_find_links_url: {type: string}
-      release_type: {type: string}
+      amdgpu_families: {type: string, required: true}
+      rocm_version: {type: string, required: true}
+      rocm_package_find_links_url: {type: string, required: true}
+      release_type: {type: string, required: true}
       ref: {type: string}
+      test_families_override: {type: string, default: ""}
+      # TODO: test_level_override: {type: string, default: ""}
 
 jobs:
   build:
-    runs-on: azure-linux-scale-rocm  # or equivalent
+    runs-on: azure-linux-scale-rocm
     outputs:
-      torch_version: ${{ steps.versions.outputs.torch_version }}
-      package_index_url: ${{ steps.upload.outputs.package_index_url }}
+      torch_version: "..."    # from manifest or write_torch_versions.py
+      package_index_url: "..." # CDN URL for installed packages
     steps:
       - # Checkout TheRock
-      - # Download manifest from S3
+      - # Download manifest from S3 (or generate if not provided,
+        #   for standalone dispatch without orchestrator)
       - # Checkout pytorch repos at manifest commit SHAs
-        #   (new script: checkout_from_manifest.py)
-      - # Build wheels (all GPU targets)
-      - # kpack-split
-      - id: versions
-        # Extract torch_version from built wheel (write_torch_versions.py)
-        # OR read from manifest (version.txt + suffix, already computed)
-      - id: upload
-        # Upload wheels to S3 v4/whl
-        # Output: package_index_url (CDN URL for the index)
+        #   (checkout_from_manifest.py -> delegates to pytorch_*_repo.py)
+      - # Build wheels (all GPU targets via expand_amdgpu_families.py)
+      - # kpack-split (host + device wheels)
+      - # Upload wheels to S3 v4/whl (publish_pytorch_to_release_bucket.py)
 
   generate_test_matrix:
     runs-on: ubuntu-24.04
     outputs:
-      test_matrix: ${{ steps.configure.outputs.test_matrix }}
+      test_matrix: "..."  # JSON: [{amdgpu_family, test_runs_on}, ...]
     steps:
       - # Checkout TheRock (for scripts)
-      - id: configure
-        run: |
-          python build_tools/github_actions/configure_pytorch_test_matrix.py \
-            --amdgpu-families "${{ inputs.amdgpu_families }}" \
-            --platform linux
-          # Outputs test_matrix: JSON array of
-          #   {amdgpu_family, test_runs_on, test_level}
-          # Examples:
-          #   {amdgpu_family: "gfx94X-dcgpu", test_runs_on: "linux-gfx942-1gpu-ossci-rocm", test_level: "full"}
-          #   {amdgpu_family: "gfx110X-all", test_runs_on: "linux-gfx110X-gpu-rocm", test_level: "smoke"}
-          #   {amdgpu_family: "gfx1151", test_runs_on: "", test_level: "none"}  # filtered out by script
+      - # configure_pytorch_test_matrix.py:
+        #   --amdgpu-families (from inputs)
+        #   --platform linux
+        #   --test-families-override (from inputs, optional)
+        #   Reads amdgpu_family_matrix.py for runner labels.
+        #   Drops families with empty test-runs-on.
+        #   Outputs JSON array to GITHUB_OUTPUT.
+        #   TODO: accept --test-level-override, output test_level per entry
 
   test:
     needs: [build, generate_test_matrix]
@@ -125,6 +137,8 @@ jobs:
       pytorch_git_ref: ${{ inputs.pytorch_git_ref }}
       python_version: ${{ inputs.python_version }}
       multi_arch: true
+    # TODO: conditionally call test_pytorch_wheels_full.yml based on
+    #   matrix.family_info.test_level == "full"
 
 
 # ============================================================
@@ -132,35 +146,27 @@ jobs:
 # ============================================================
 #
 # multi_arch_release_linux.yml (parent)
-#   │
-#   │ dispatch (amdgpu_families, rocm_version, find_links_url, release_type)
-#   ▼
-# multi_arch_release_linux_pytorch_wheels.yml (orchestrator)
-#   │
-#   ├─► generate_manifest
-#   │     reads: pytorch_git_refs (hardcoded list), rocm_version
-#   │     resolves: refs → commits (GitHub API)
-#   │     fetches: version.txt per repo per ref (GitHub API)
-#   │     writes: manifest JSONs to S3
-#   │     outputs: manifest_s3_prefix, build_matrix
-#   │
-#   └─► build_and_test (matrix: pytorch_git_ref × python_version)
-#         │
-#         │ workflow_call (per cell)
-#         ▼
-#       build_and_test_multiarch_pytorch.yml
-#         │
-#         ├─► build
-#         │     reads: manifest from S3 (commit SHAs, versions)
-#         │     builds: wheels for all GPU targets
-#         │     uploads: wheels to S3 v4/whl
-#         │     outputs: torch_version, package_index_url
-#         │
-#         ├─► generate_test_matrix
-#         │     reads: amdgpu_families, amdgpu_family_matrix.py
-#         │     applies: test policy (which families, test depth)
-#         │     outputs: test_matrix [{amdgpu_family, test_runs_on, test_level}]
-#         │
-#         └─► test (matrix: family_info from test_matrix, needs: build)
+#   |  dispatch (amdgpu_families, rocm_version, find_links_url, release_type)
+#   v
+# File 1: orchestrator
+#   |
+#   +-> generate_manifest
+#   |     inputs: pytorch_git_refs, rocm_version, python_versions (overrides)
+#   |     outputs: manifest_s3_prefix, build_matrix
+#   |
+#   +-> build_and_test (matrix: pytorch_ref x python_version)
+#         |  workflow_call (per cell)
+#         v
+#       File 2: per-cell reusable workflow
+#         |
+#         +-> build
+#         |     inputs: manifest (from S3), amdgpu_families, rocm_version
+#         |     outputs: torch_version, package_index_url
+#         |
+#         +-> generate_test_matrix (parallel with build)
+#         |     inputs: amdgpu_families, test_families_override
+#         |     outputs: test_matrix [{amdgpu_family, test_runs_on}]
+#         |
+#         +-> test (matrix: family, needs: [build, generate_test_matrix])
 #               calls: test_pytorch_wheels.yml
 #               inputs: family, runner, torch_version, index_url, multi_arch=true

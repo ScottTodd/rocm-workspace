@@ -19,10 +19,19 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 
 - [x] Test workflows support `multi_arch=true` install path
 - [x] Drop whl-staging-multi-arch, publish directly to whl-multi-arch
-- [ ] Upfront manifest generation (freeze commits + compute versions)
-- [ ] Restructure release workflow: orchestrator + reusable per-cell workflow
-- [ ] Add test jobs that read from manifest
-- [ ] Test matrix policy script
+- [x] Upfront manifest generation script
+- [x] Checkout-from-manifest script
+- [x] determine_version.py exports version_suffix to GITHUB_ENV
+- [x] Wire manifest into per-family build workflows (Linux + Windows)
+- [x] Rename upload_pytorch_manifest -> upload_pytorch_manifests (directory)
+- [x] Add pytorch_manifest_dir() to WorkflowOutputRoot
+- [x] Clean up manifest format (consistent URLs, rocm_version under therock)
+- [ ] Test end-to-end on a real workflow run
+- [ ] Unit tests for generate_pytorch_manifest_upfront.py
+- [ ] Unit tests for checkout_from_manifest.py
+- [ ] Restructure multi-arch release workflow (orchestrator + per-cell)
+- [ ] Test matrix script (configure_pytorch_test_matrix.py)
+- [ ] Add test jobs to multi-arch release workflows
 - [ ] Multi-arch CI workflows optionally call test workflows
 
 ## Context
@@ -32,43 +41,30 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 - Issue: https://github.com/ROCm/TheRock/issues/3332
 - Issue: https://github.com/ROCm/TheRock/issues/5110 (manifest + workflow architecture)
 - Issue: https://github.com/ROCm/TheRock/issues/1236 (commit manifests)
-- PR #4996: `multi_arch` input for test workflows (in review)
-- PR #5107: drop whl-staging, publish directly to whl-multi-arch (in review)
-
-### Related work
-
-- `tasks/active/multi-arch-releases.md` - multi-arch release pipelines
-- `tasks/active/pytorch-ci.md` - PyTorch CI integration
-- Issue #2156 - stabilize PyTorch release workflows
-- Issue #3291 - build/test PyTorch in CI
-- Issue #4889 - smoke test runner crash on Windows gfx120X
+- PR #4996: `multi_arch` input for test workflows (merged)
+- PR #5107: drop whl-staging, publish directly to whl-multi-arch (merged)
 
 ### Key files
 
 ```
-# Test workflows
-.github/workflows/test_pytorch_wheels.yml
-.github/workflows/test_pytorch_wheels_full.yml
+# New manifest scripts
+build_tools/github_actions/generate_pytorch_manifest_upfront.py
+build_tools/github_actions/upload_pytorch_manifests.py
+build_tools/github_actions/manifest_utils.py
+build_tools/github_actions/github_actions_api.py  # gha_resolve_git_ref, gha_fetch_file_contents
+external-builds/pytorch/checkout_from_manifest.py
 
-# Multi-arch release workflows (to be restructured)
+# Workflows updated with manifest-driven checkouts
+.github/workflows/build_portable_linux_pytorch_wheels.yml
+.github/workflows/build_windows_pytorch_wheels.yml
+
+# Workflows to restructure next
 .github/workflows/multi_arch_release_linux_pytorch_wheels.yml
 .github/workflows/multi_arch_release_windows_pytorch_wheels.yml
-.github/workflows/multi_arch_release_linux.yml      # parent, dispatches pytorch
 
-# Old per-family (reference pattern for build→test→promote)
-.github/workflows/release_portable_linux_pytorch_wheels.yml  # orchestrator
-.github/workflows/build_portable_linux_pytorch_wheels.yml    # reusable per-cell
-
-# Manifest generation
-build_tools/github_actions/generate_pytorch_manifest.py      # current (post-build)
-build_tools/github_actions/manifest_utils.py
-
-# Supporting scripts
-build_tools/github_actions/amdgpu_family_matrix.py
-build_tools/github_actions/determine_version.py
-build_tools/github_actions/publish_pytorch_to_release_bucket.py
-external-builds/pytorch/build_prod_wheels.py
-external-builds/pytorch/pytorch_torch_repo.py
+# Test workflows (already support multi_arch=true)
+.github/workflows/test_pytorch_wheels.yml
+.github/workflows/test_pytorch_wheels_full.yml
 ```
 
 ## Completed work
@@ -79,20 +75,59 @@ Added `multi_arch` boolean input to both test workflows. When true:
 - `expand_amdgpu_families.py --output-mode=device-extras` expands family to
   device extras and writes to GITHUB_OUTPUT
 - `setup_venv.py` installs `torch[device-gfx942]==$VERSION --index-url=$URL`
-  (no `--index-subdir`)
 - `rocm[devel,device-gfx942]` installed from same index (full test only)
-- `summarize_test_pytorch_workflow.py` handles both args independently
-
-Validation:
-- Linux gfx942: tests passed, no regressions (run 25233709159)
 
 ### PR #5107 -- drop whl-staging, publish directly to whl-multi-arch
 
 - Renamed `publish_pytorch_to_staging.py` -> `publish_pytorch_to_release_bucket.py`
 - `v4/whl-staging` -> `v4/whl` (per-family v3 staging unchanged)
-- RELEASES.md: removed staging, added multi-device/device-all examples,
-  nightly instability warning, merged device-all into extras table
+- RELEASES.md: removed staging, added install examples
 - external-builds/pytorch/README.md: rewrote gating section
+
+### Manifest generation (branch: multi-arch-torch-manifest)
+
+Scripts:
+- `generate_pytorch_manifest_upfront.py`: resolves refs -> commits via
+  GitHub API, fetches version.txt, computes versions. Supports `--platform`,
+  `--projects`, `--pytorch-git-refs` for flexibility.
+- `checkout_from_manifest.py`: reads manifest, delegates to existing
+  `pytorch_*_repo.py checkout` scripts with explicit commit SHAs.
+- `gha_resolve_git_ref()` and `gha_fetch_file_contents()` added to
+  `github_actions_api.py`.
+- `detect_therock_source_info()` added to `manifest_utils.py`.
+- `determine_version.py`: simplified, exports `version_suffix` to GITHUB_ENV.
+
+Workflow changes:
+- `build_portable_linux_pytorch_wheels.yml` and
+  `build_windows_pytorch_wheels.yml`: replaced nightly/stable checkout
+  blocks with manifest generation + checkout_from_manifest.py. Made
+  `rocm_version` required.
+- Renamed `upload_pytorch_manifest.py` -> `upload_pytorch_manifests.py`,
+  changed from single-file to directory upload.
+- Added `pytorch_manifest_dir()` to `WorkflowOutputRoot`.
+- Removed old `generate_pytorch_manifest.py` post-build step.
+
+Manifest format:
+```json
+{
+  "pytorch": {
+    "commit": "1a2700743c...",
+    "repo": "https://github.com/ROCm/pytorch",
+    "branch": "release/2.10",
+    "version": "2.10.0+rocm7.13.0a20260501"
+  },
+  "pytorch_audio": { "commit": "...", "repo": "...", "version": "..." },
+  "pytorch_vision": { "commit": "...", "repo": "...", "version": "..." },
+  "triton": { "commit": "...", "repo": "...", "version": "..." },
+  "apex": { "commit": "...", "repo": "...", "version": "..." },
+  "therock": {
+    "commit": "...",
+    "repo": "https://github.com/ROCm/TheRock",
+    "branch": "main",
+    "rocm_version": "7.13.0a20260501"
+  }
+}
+```
 
 ## Design decisions
 
@@ -100,100 +135,56 @@ Validation:
 
 **Decision:** Drop the staging-to-promoted index split for multi-arch.
 Publish directly to `whl-multi-arch`. Tests run post-publish as signal
-(HUD), not as a gate.
+(HUD), not as a gate. See #3332 discussion.
 
-**Rationale:** Shared host `torch` wheel + independent device wheels make
-clean promotion impossible. See #3332 discussion.
+### Manifest-driven checkouts
 
-### Workflow architecture: orchestrator + reusable per-cell workflow
+**Decision:** Generate manifests upfront (before build), pin exact commits
+and compute versions via GitHub API. Both build and test jobs read from
+the manifest. Replaces the old nightly/stable checkout conditionals and
+post-build manifest generation.
 
-**Decision:** Mirror the per-family pattern. The orchestrator owns the
-matrix; each cell is a reusable workflow containing build + test jobs.
+Manifests are uploaded to S3 at
+`{run_id}-{platform}/manifests/pytorch/{amdgpu_family}/`.
 
-**Why:** Tests should start as soon as their build cell finishes, not wait
-for the entire build matrix. A reusable workflow per `(pytorch_ref,
-python_version)` cell achieves this — the inner test job has `needs: build`
-scoped to that cell only.
+Currently generated inline in the build job. Future: separate
+generate_manifest job that runs first and uploads to S3, with the build
+job downloading it. This enables an orchestrator to freeze commits once
+for the entire build matrix (#1236).
 
-The inner test job fans out per-family (different GPU runners) using its
-own `strategy.matrix` over families.
+### Repo URL consistency
 
-### Upfront manifest generation
+All repo URLs in manifests use `https://github.com/{owner}/{repo}` without
+`.git` suffix. URLs from `related_commits` (upstream data) already omit it;
+we now match that for URLs we construct.
 
-**Decision:** Generate manifests BEFORE building, not after. Freeze
-commits and compute versions in a lightweight job, write to S3. Build
-and test jobs read from the manifest.
+### Workflow architecture (target state)
 
-**Manifest format:** Same as existing manifests (see #5110), extended
-with version info:
-
-```json
-{
-  "pytorch": {
-    "commit": "1a2700743c...",
-    "repo": "https://github.com/ROCm/pytorch.git",
-    "branch": "release/2.10",
-    "version": "2.10.0"
-  },
-  "pytorch_audio": { ... },
-  "pytorch_vision": { ... },
-  "triton": { ... },
-  "apex": { ... },
-  "therock": { ... },
-  "rocm_version": "7.13.0a20260501",
-  "version_suffix": "+rocm7.13.0a20260501"
-}
+```
+orchestrator
+  +-> generate_manifest (one job, uploads to S3)
+  +-> build_and_test (matrix: pytorch_ref x python_version)
+        calls: reusable per-cell workflow
+          +-> build (downloads manifest, checks out, builds, uploads wheels)
+          +-> generate_test_matrix (which families, runner labels)
+          +-> test (matrix: family, calls test_pytorch_wheels.yml)
 ```
 
-**Version derivation:** For torch, torchaudio, torchvision, and apex the
-pattern is `version.txt + version_suffix`. The base version can be fetched
-from the repo at the resolved commit via GitHub API (one file, no clone).
-Triton is more complex (git hash in nightly versions) but gets pulled in
-as a dependency — we don't need its version for testing.
+### Test matrix and developer overrides
 
-**Checkout from manifest:** New entry point script that reads a manifest
-and delegates to the existing `pytorch_*_repo.py checkout` scripts with
-explicit commit SHAs. Single command to reproduce CI checkouts locally.
+Script controls which (pytorch_ref, python_version, family) combos to test.
+Override inputs: `python_versions`, `pytorch_git_refs`, `test_families_override`.
+Future: `test_level` (none/smoke/full) per entry.
 
-### Test matrix policy
+## Next steps
 
-**Decision:** A Python script (`configure_pytorch_test_matrix.py`)
-generates the test matrix, controlling which `(pytorch_ref,
-python_version, family, test_level)` combinations to test.
-
-**Policy examples:**
-- Test latest stable pytorch on py3.12 with full suite for gfx942
-- Test other pytorch versions with smoketests only
-- Skip python versions that pytorch upstream doesn't test
-- Skip families with no test runners
-
-**Data sources:**
-- `amdgpu_family_matrix.py` for runner labels
-- Manifest for versions
-- Policy defined in the script itself (easy to update and test)
-
-## PR sequencing
-
-### PR 3: Upfront manifest generation
-
-- New/extended `generate_pytorch_manifest.py`: resolve refs -> commits
-  via GitHub API, fetch `version.txt` per repo, compute versions
-- New checkout-from-manifest script
-- Add `generate_manifest` job to orchestrator
-- Build job reads manifest for checkouts and version info
-- Upload manifest to S3
-
-### PR 4: Test matrix + test jobs
-
-- New `configure_pytorch_test_matrix.py` with test policy
-- Split orchestrator + reusable per-cell workflow
-- Inner test job calls `test_pytorch_wheels.yml` with `multi_arch: true`
-- Per-family fan-out inside the reusable workflow
-
-### Later: Windows, CI integration
-
-- Same pattern for `multi_arch_release_windows_pytorch_wheels.yml`
-- Wire into CI workflows for pre-submit testing (#3291)
+1. [ ] Test the manifest-driven checkouts end-to-end on a real workflow run
+   (trigger build_portable_linux_pytorch_wheels.yml manually)
+2. [ ] Add unit tests for new scripts
+3. [ ] Restructure multi-arch release workflow into orchestrator + per-cell
+4. [ ] Write configure_pytorch_test_matrix.py
+5. [ ] Add test jobs to multi-arch release workflows
+6. [ ] Wire into CI workflows for pre-submit testing (#3291)
 
 ## Windows test signal (as of 2026-05-01)
 

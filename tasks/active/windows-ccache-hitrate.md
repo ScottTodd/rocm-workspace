@@ -449,7 +449,15 @@ subst target or BUILD_DIR to match. E.g., `subst R: B:\` then
   expected to always miss). **100% hit rate on actual source files.**
 
 **Experiment 3: subst + resource-dir, full math-libs**
-- [Run 25576559806](https://github.com/ROCm/TheRock/actions/runs/25576559806) (full math-libs, in progress)
+- [Run 25576559806](https://github.com/ROCm/TheRock/actions/runs/25576559806), full math-libs
+- Attempt 1 (cold cache): 0% hits, populated remote cache
+- Attempt 2 ([job 75106059811](https://github.com/ROCm/TheRock/actions/runs/25576559806/job/75106059811), warm cache):
+  **96.09% hit rate** (7625/7935)
+- Per-project comparison vs Linux (clang++ compilations only):
+  - Linux: 100% (8486/8486)
+  - Windows: **99.4%** (5764/5799)
+  - All major subprojects at 100% on both platforms
+  - 35 Windows misses mostly from CMake probes and unmatched paths
 
 **Changes that worked:**
 1. `subst D: B:\` — maps stable drive letter over the volume mount
