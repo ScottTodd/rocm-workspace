@@ -60,7 +60,7 @@ The workspace `.claude/` directory contains:
 - `settings.json` and `settings.local.json` - configuration
 
 Need to explore:
-- `D:/projects/claude-rocm-workspace/.claude/commands/` - likely location for skill definitions
+- `D:/projects/rocm-workspace/.claude/commands/` - likely location for skill definitions
 - User's global `.claude/` at `/c/Users/Nod-Shark16/.claude` - might have skill examples
 
 ---
@@ -109,7 +109,7 @@ Need to explore:
 ## Implementation Steps
 
 1. **Explore skill system:**
-   - Check `D:/projects/claude-rocm-workspace/.claude/commands/`
+   - Check `D:/projects/rocm-workspace/.claude/commands/`
    - Look at existing skill definitions (`wip`, `task`)
    - Understand skill file format and structure
 

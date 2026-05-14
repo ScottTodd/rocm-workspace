@@ -1,17 +1,16 @@
-# ROCm Claude Code Workspace
+# ROCm Workspace
 
-A meta-workspace for using Claude Code to work on
-[ROCm/TheRock](https://github.com/ROCm/TheRock) and related projects. This
-repository serves as a "control center" that provides centralized context,
-tooling, and documentation for AI-assisted development.
+A meta-workspace for work on [ROCm/TheRock](https://github.com/ROCm/TheRock) and
+related projects. This repository serves as a "control center" that provides
+centralized context, tooling, and documentation for AI-assisted development.
 
 ## Why a Meta-Workspace?
 
 Build infrastructure work on ROCm involves multiple scattered repositories and
-build directories. Rather than making any single ROCm project the Claude Code
-workspace, this separate meta-repository:
+build directories. Rather than making any single ROCm project the workspace,
+this separate meta-repository:
 
-- Provides centralized context and documentation for Claude Code
+- Provides centralized context and documentation
 - Maps out where all the various directories live (see
   [`directory-map.md`](/directory-map.md))
 - Contains workflows, notes, and helper scripts
@@ -20,7 +19,7 @@ workspace, this separate meta-repository:
 ## Directory Structure
 
 ```
-claude-rocm-workspace/
+rocm-workspace/
 ├── CLAUDE.md              # Project context and instructions for Claude Code
 ├── directory-map.md       # Map of ROCm directories on your system
 │
@@ -110,7 +109,7 @@ Claude runs commands.
 
 **One-time setup (Windows):**
 ```powershell
-cd D:\projects\claude-rocm-workspace
+cd D:\projects\rocm-workspace
 py -V:3.12 -m venv 3.12.venv
 .\3.12.venv\Scripts\activate.bat
 pip install -r ..\TheRock\requirements.txt

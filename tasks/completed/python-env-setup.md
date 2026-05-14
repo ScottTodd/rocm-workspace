@@ -1,6 +1,6 @@
 ---
 repositories:
-  - claude-rocm-workspace
+  - rocm-workspace
 ---
 
 # Python Environment Setup for Claude Code
@@ -48,7 +48,7 @@ Reference: `git show 1cb9e4b02a7314a893b07e0de9620670f28753fc:scripts/claude.sh`
 
 ### Directories/Files Involved
 ```
-D:/projects/claude-rocm-workspace/
+D:/projects/rocm-workspace/
   scripts/claude.bat   # Launcher script (created)
   3.12.venv/           # Virtual environment (created)
   ../TheRock/requirements.txt  # Using TheRock's existing requirements
@@ -61,7 +61,7 @@ D:/projects/claude-rocm-workspace/
 ### Actual setup (Windows)
 
 ```powershell
-cd D:\projects\claude-rocm-workspace
+cd D:\projects\rocm-workspace
 py -V:3.12 -m venv 3.12.venv
 .\3.12.venv\Scripts\activate.bat
 pip install -r ..\TheRock\requirements.txt

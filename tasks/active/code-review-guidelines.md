@@ -1,7 +1,7 @@
 ---
 repositories:
   - therock        # Will move guidelines here once tested
-  - claude-rocm-workspace  # Current development location
+  - rocm-workspace  # Current development location
 ---
 
 # Code Review Guidelines
@@ -118,7 +118,7 @@ Created three guideline files:
 
 Need to create documentation authoring guidelines in two locations:
 - `TheRock/docs/development/style_guides/markdown.md` (or `documentation.md`)
-- `claude-rocm-workspace/reviews/guidelines/documentation.md`
+- `rocm-workspace/reviews/guidelines/documentation.md`
 
 **Key rules to include:**
 

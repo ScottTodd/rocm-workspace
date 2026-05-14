@@ -17,7 +17,7 @@ across the filesystem and referenced by absolute paths.
 
 For example:
 
-- This meta-workspace directory: `D:/projects/claude-rocm-workspace`
+- This meta-workspace directory: `D:/projects/rocm-workspace`
 - TheRock directory: `D:/projects/TheRock`
 - Relative path to edit a file in TheRock: `../TheRock/docs/development/README.md`
 
