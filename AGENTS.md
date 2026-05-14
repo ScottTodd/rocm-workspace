@@ -69,15 +69,14 @@ and clr relationships are governed from `core/CMakeLists.txt` and documented in
 
 ### Building
 
-Builds typically happen in separate build trees. Out-of-tree builds are standard
-practice, and full builds can be very expensive. Prefer task-specific
-configuration and incremental builds over broad rebuilds unless the user asks
-for a full build.
+Full builds can be very expensive. Prefer task-specific configuration and
+incremental builds over broad rebuilds unless the user asks for a full build.
 
 For build-infra iteration when C++ debugging is not expected:
 
 ```bash
-cmake -B /develop/therock-build -S /develop/therock -GNinja -DTHEROCK_AMDGPU_FAMILIES=gfx1201 \
+cmake -B D:\projects\TheRock\build -S D:\projects\TheRock -GNinja \
+  -DTHEROCK_AMDGPU_FAMILIES=gfx1100 \
   -DCMAKE_C_COMPILER_LAUNCHER=ccache \
   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 ```
@@ -85,14 +84,14 @@ cmake -B /develop/therock-build -S /develop/therock -GNinja -DTHEROCK_AMDGPU_FAM
 Then build only what is needed. A full `ninja` can be very time consuming:
 
 ```bash
-cd /develop/therock-build && ninja
+cd D:\projects\TheRock\build && ninja
 ```
 
 For specific ROCm components, configure the appropriate `THEROCK_ENABLE_*`
 subset as described in TheRock's README, then iterate on named project targets:
 
 ```bash
-cd /develop/therock-build
+cd D:\projects\TheRock\build
 ninja clr+expunge && ninja clr+dist
 ```
 
@@ -264,14 +263,14 @@ Commit guidance:
 - First line: concise summary, roughly 50-72 characters.
 - Follow with a blank line and explanatory body when useful.
 - Include testing and verification notes when they matter.
-- Do not include issue references such as `Fixes #123` unless the user asks.
-- Do not include PR references such as `#123`; PR metadata belongs in PR text.
-- Do not add tool-specific AI footers unless the user asks for them or the
+- Do NOT include issue references such as `Fixes #123` unless the user asks.
+- Do NOT include PR references such as `#123`; PR metadata belongs in PR text.
+- Do NOT add tool-specific AI footers unless the user asks for them or the
   repository policy requires them.
-- Never retry a failed signed commit with `--no-gpg-sign`; the user uses a
+- NEVER retry a failed signed commit with `--no-gpg-sign`; the user uses a
   hardware signing device.
-- Never push without explicit authorization.
-- Do not amend commits without explicit authorization.
+- NEVER push without explicit authorization.
+- Do NOT amend commits without explicit authorization.
 
 ## Review Workflow
 
@@ -355,7 +354,7 @@ save them to a local scratch file so they can be shared later.
 
 ## Task Tracking
 
-This repository is moving toward [Beads](https://github.com/gastownhall/beads)
+This repository may move toward [Beads](https://github.com/gastownhall/beads)
 for task tracking.
 
 When Beads is available in the environment:
@@ -382,6 +381,5 @@ unless the user asks. Until Beads is initialized, `tasks/active/` and
 - Do not be sycophantic. Push back when reasoning seems unsound, then respect
   the user's decision.
 - Do not describe work as "production" code or use shaky progress metrics.
-- Before committing to `rocm-kpack`, run `pre-commit`.
 - When writing design docs, include an "Alternatives Considered" section that
   covers major rejected architectural options.
