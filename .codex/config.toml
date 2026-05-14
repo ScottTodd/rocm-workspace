@@ -1,0 +1,20 @@
+# Project-local Codex defaults for this meta-workspace.
+#
+# Codex loads project .codex/config.toml only after the project is trusted.
+# Restart Codex after changing this file so the sandbox is recreated with the
+# updated writable roots.
+
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+
+[windows]
+sandbox = "elevated"
+
+[sandbox_workspace_write]
+# Keep these paths aligned with directory-map.md. The sibling repository paths
+# are relative to this workspace layout; the scratch path is Windows-specific.
+writable_roots = [
+  "../TheRock",
+  "../rockrel",
+  "D:/scratch/codex",
+]

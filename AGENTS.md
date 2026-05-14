@@ -16,6 +16,8 @@ review workflows, notes, and helper scripts.
 Tool-specific files are intentionally separate:
 
 - `.claude/` contains Claude Code commands, agents, settings, and output styles.
+- `.codex/config.toml` contains Codex project sandbox defaults and writable
+  roots.
 - `.agents/skills/review-pr/` and `.agents/skills/review-branch/` contain
   Codex-readable review workflow instructions.
 - `scripts/claude.bat` and `scripts/codex.bat` launch each client with the
@@ -35,6 +37,8 @@ Important conventions:
 - Use relative paths when editing sibling repositories from this workspace.
   Example: edit `../TheRock/docs/development/README.md`, not an absolute path,
   unless a tool explicitly requires an absolute path.
+- Codex should get writable access to sibling repositories and scratch space
+  from `.codex/config.toml`; restart Codex after changing that file.
 - Do not assume all directories under `directory-map.md` exist on every machine.
   Check before using them.
 

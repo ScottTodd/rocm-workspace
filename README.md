@@ -28,6 +28,9 @@ rocm-workspace/
 |       |-- review-pr/
 |       `-- review-branch/
 |
+|-- .codex/                # Codex project configuration
+|   `-- config.toml        # Sandbox defaults and writable roots
+|
 |-- .claude/               # Claude Code configuration
 |   |-- commands/          # Slash commands (/task, /review-pr, etc.)
 |   |-- agents/            # Claude Code subagents
@@ -59,6 +62,7 @@ Tool-specific behavior lives outside the shared instructions:
 
 - Claude slash commands: [`.claude/commands/`](/.claude/commands/)
 - Claude subagents: [`.claude/agents/`](/.claude/agents/)
+- Codex project config: [`.codex/config.toml`](/.codex/config.toml)
 - Codex review skills: [`.agents/skills/`](/.agents/skills/)
 
 ## Code Review System
@@ -136,6 +140,22 @@ Launch Codex:
 ```
 
 The launchers activate the workspace venv before starting the selected agent.
+
+### Codex Sandbox
+
+Codex sandbox defaults are checked in at [`.codex/config.toml`](/.codex/config.toml).
+That file keeps Codex in `workspace-write` mode and adds the common sibling
+repositories and Codex scratch directory as writable roots:
+
+- `../TheRock`
+- `../rockrel`
+- `D:/scratch/codex`
+
+Codex only loads project `.codex/` configuration for trusted projects. If edits
+outside `rocm-workspace` are unexpectedly denied, trust this project in Codex
+and restart the session so the sandbox is recreated with the project config.
+Keep the paths in `.codex/config.toml` aligned with
+[`directory-map.md`](/directory-map.md) when moving between machines.
 
 ## Adapting For Another Project
 
