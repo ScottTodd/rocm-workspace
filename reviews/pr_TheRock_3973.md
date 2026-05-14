@@ -1,135 +1,183 @@
-# PR Review: Add Windows packaging requirements RFC document
+# PR Review: #3973 - Add Windows packaging requirements RFC document
 
-* **PR:** [#3973](https://github.com/ROCm/TheRock/pull/3973)
+* **PR:** https://github.com/ROCm/TheRock/pull/3973
 * **Author:** LiamfBerry
 * **Base:** `main` ← `windows-packaging-rfc`
-* **Reviewed:** 2026-03-19
-* **Type:** Comprehensive
+* **Reviewed:** 2026-05-13
+* **Status:** OPEN
 
 ---
 
 ## Summary
 
-Adds RFC0011 defining Windows packaging requirements for ROCm via TheRock. Covers MSI, Winget, pip, and ZIP packaging formats, directory layout, versioning, side-by-side installation, registry discovery, environment variables, driver decoupling, logging, signing, redistribution, and a VS Code plugin. This is a companion to the existing RFC0009 (Linux packaging requirements).
+This PR adds RFC0012, defining Windows packaging requirements for ROCm software
+built with TheRock. It covers MSI packaging, Winget integration, directory
+layout, multi-version installation, environment variables, registry keys,
+driver compatibility, and redistribution models. The RFC is a companion to
+[RFC0009](https://github.com/ROCm/TheRock/blob/main/docs/rfcs/RFC0009-OS-Packaging-Requirements.md)
+(Linux packaging) and cross-references it throughout.
 
-**Net changes:** +464 lines, -0 lines across 1 file
+**Net changes:** +571 lines, -0 lines across 1 file
 
 ---
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** - The RFC is well-structured and covers the necessary packaging concerns comprehensively. However, there are numerous typos/spelling errors throughout the document, some internal inconsistencies in the package tables, and a few areas where requirements are ambiguous or potentially contradictory. These should be cleaned up before the RFC is published for wider feedback.
+**⚠️ CHANGES REQUESTED** - Well-structured RFC with good breadth of coverage,
+but has CI failures and several content gaps that should be resolved before merge.
 
 **Strengths:**
-- Clear scope delineation (in-scope vs out-of-scope)
-- Good alignment with the existing RFC0009 Linux packaging structure
-- Concrete examples for MSI commands and directory layouts
-- Thoughtful handling of symlink limitations on Windows
-- Clear side-by-side versioning policy
+
+- Comprehensive coverage of Windows packaging concerns (MSI, Winget, registry,
+  env vars, driver decoupling, redistribution)
+- Good cross-referencing with RFC0009 for Linux parity
+- Clear versioning and upgrade behavior matrix
+- Practical examples for CLI installation commands
 
 **Issues:**
 
-- Many spelling/typographical errors throughout
-- Package table inconsistencies between sections
-- Some ambiguous requirements around caches and per-user installs
+- Pre-commit CI failures (trailing whitespace, mdformat table formatting)
+- RFC README index not updated
+- Package tables have gaps (packages referenced in meta-packages but missing
+  from fine-grained table)
+- Interactive CLI example is technically misleading for MSI
 
 ---
 
 ## Detailed Review
 
-### ❌ BLOCKING: Numerous spelling and typographical errors
+### ❌ BLOCKING: Pre-commit CI failures
 
-The document has many typos that undermine its credibility as a published requirements document:
+The `pre-commit` job
+[fails](https://github.com/ROCm/TheRock/actions/runs/25823079176/job/75869126782)
+with two issues in `RFC0012-Windows-Packaging-Requirements.md`:
 
-- Line 10: "distrobuition" → "distribution"
-- Line 14: "sotware" → "software"
-- Line 60: "ir power-user" → "or power-user"
-- Line 94: "provleges" → "privileges"
-- Line 132: "Cmake" → "CMake"
-- Line 168: "libraires" → "libraries"
-- Line 208: "seperable" → "separable"
-- Line 210: "avaialable" → "available"
-- Line 263: "footproint" → "footprint"
-- Line 263: "redistribuition" → "redistribution"
-- Line 300: "package-owend" → "package-owned"
-- Line 309: "enrionment" → "environment"
-- Line 337: "dsicovery" → "discovery"
-- Line 349: "compatiblity" → "compatibility"
-- Line 351: "seperate" → "separate"
-- Line 376: "assiociated" → "associated"
-- Line 441: "Exisiting-version" → "Existing-version"
-- Line 446: "deffered" → "deferred"
-- Line 459: "redistrobution" → "redistribution" (appears multiple times)
-- Line 461: "distringuish" → "distinguish"
-- Line 464: "redistrobution" → "redistribution"
+1. **Trailing whitespace** on two lines:
+   - Line 239: `### ROCm Installer Branding ` (trailing space)
+   - Line 349: paragraph ending with trailing space
 
-**Required action:** Run a spell check pass over the entire document. There are ~20+ typos — these are the ones I caught but there may be more.
+2. **mdformat table reformatting** — the Meta Packages table (line ~196) and
+   Fine-Grained Packages table (line ~211) have column widths that don't match
+   mdformat's expected output. The Version Handling table (line ~401) also
+   requires reformatting.
 
-### ⚠️ IMPORTANT: Package table inconsistencies between sections
+**Required action:** Run `pre-commit run --all-files` locally and commit the
+fixes. The tables just need column-width adjustments to satisfy mdformat.
 
-The document defines packages in three separate tables (lines 143-155, lines 170-180, lines 213-221) with inconsistent content:
+### ❌ BLOCKING: RFC README index not updated
 
-1. **"Path Length Requirements" table (lines 143-155)** lists `amdrocm-runtimes`, `amdrocm-core`, `amdrocm-developer-tools`, `amdrocm-core-sdk`, `amdrocm-raytracing`, `amdrocm-raytracing-sdk`
-2. **"Package Naming" table (lines 170-180)** lists the same six packages but with slightly different descriptions
-3. **"Installer for ROCm" table (lines 213-221)** lists five packages including `amdrocm-core-dev.msi` which appears nowhere else, and omits `amdrocm-raytracing` and `amdrocm-raytracing-sdk`
+[`docs/rfcs/README.md`](https://github.com/ROCm/TheRock/blob/main/docs/rfcs/README.md)
+lists RFCs up to RFC0011. RFC0012 needs to be added to the index, per the
+"Adding an RFC" instructions in that file.
 
-Questions:
-- Is `amdrocm-core-dev.msi` a separate package from `amdrocm-core-sdk.msi`? The naming table doesn't mention it.
-- Why do the ray tracing packages disappear from the installer section?
-- The "Path Length Requirements" section seems like an odd place to define the authoritative package list — that feels more like it belongs in "Package Naming" or "Installer for ROCm."
+**Required action:** Add
+`- [RFC0012: Windows Packaging Requirements](./RFC0012-Windows-Packaging-Requirements.md)`
+to the index in `docs/rfcs/README.md`.
 
-**Recommendation:** Consolidate to a single authoritative package table (in "Package Naming" or a dedicated section), then reference it from other sections. Clarify the relationship between `core-dev` and `core-sdk`.
+### ⚠️ IMPORTANT: Incomplete fine-grained package table
 
-### ⚠️ IMPORTANT: Cache location under Program Files is unusual
+Several packages appear in the meta-packages table but have no corresponding
+entry in the fine-grained packages table:
 
-Lines 102-116 specify caches under `C:\Program Files\AMD\rocm\cache\`. On Windows, `Program Files` is typically read-only for non-admin processes. Standard Windows practice stores caches in:
-- `%LOCALAPPDATA%\AMD\ROCm\cache\` (per-user)
-- `%PROGRAMDATA%\AMD\ROCm\cache\` (per-machine)
+| Package | Referenced in | Missing from |
+|---------|--------------|--------------|
+| `amdrocm-sysdeps` | `amdrocm-runtimes.msi`, `amdrocm-core.msi` | Fine-grained table |
+| `amdrocm-opencl` | `amdrocm-core-sdk.msi` | Fine-grained table |
+| `amdrocm-opencl-devel` | `amdrocm-core-devel.msi` | Fine-grained table |
 
-The document says "Caches are stored system wide and matches Windows guidelines for application data" — but `Program Files` is specifically *not* the Windows-recommended location for application data/caches. The recommended locations are `%PROGRAMDATA%` or `%LOCALAPPDATA%` per [Microsoft's guidelines](https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid).
+This makes it unclear what these packages contain. Readers looking at the
+fine-grained table to understand package contents will not find them.
 
-**Recommendation:** Clarify whether admin elevation is always assumed when writing caches, or move the cache location to `%PROGRAMDATA%\AMD\ROCm\cache\` for system-wide caches (or `%LOCALAPPDATA%` for per-user).
+**Recommendation:** Either add rows for these packages to the fine-grained
+table, or add a note explaining why they are excluded (e.g., "defined in
+RFC0009" or "contents TBD").
 
-### ⚠️ IMPORTANT: Per-user install feasibility is questionable for some packages
+### ⚠️ IMPORTANT: Interactive CLI example is misleading
 
-The MSI requirements (line 232) state "Support per-user installation where technically valid for the selected package set." However, the directory layout mandates `C:\Program Files\AMD\rocm\core-X.Y` which requires admin privileges. The document doesn't describe an alternative per-user installation path (e.g., under `%LOCALAPPDATA%`).
+The "Interactive CLI mode" section (around line 299) shows this example:
 
-Additionally, the registry section mentions `HKCU\Software\AMD\ROCm\X.Y\` for per-user installs and `HKCU\Software\AMD\ROCm\CurrentVersion`, but nothing else in the document describes how a per-user install actually differs from per-machine.
+```
+msiexec /i amdrocm-core-sdk.msi
 
-**Recommendation:** Either flesh out per-user installation (alternative directory, environment scope) or explicitly state that per-user installation is a future consideration and remove the per-user registry requirements for now.
+ROCm SDK Installer vX.Y.Z
+Select components to install (space to toggle, enter to confirm):
 
-### ⚠️ IMPORTANT: VS Code plugin section seems out of scope
+  [x] HIP API headers and CMake configuration
+  ...
+```
 
-Lines 371-387 define requirements for a "Visual Studio Code Plugin" (the heading says "Visual Studio Code" but the body describes "Visual Studio plugin" — which is it?). This feels like it belongs in a separate RFC or feature spec rather than a packaging requirements document. The packaging RFC should define the discovery mechanisms (registry, env vars) that *any* tool can use, not specify requirements for a specific IDE plugin.
+MSI does not support console-based interactive menus. Running `msiexec /i`
+without `/quiet` opens a standard Windows Installer GUI dialog, not a TUI with
+`[x]` checkboxes. This example implies a custom launcher/wrapper application
+that doesn't come from the MSI framework.
 
-**Recommendation:** Either rename to "IDE/Tool Discovery Requirements" focusing on the general mechanism, or move the VS Code/Visual Studio plugin requirements to a separate document and reference the discovery mechanisms defined here.
+**Recommendation:** Either:
+- Clarify that this interactive experience requires a separate launcher
+  application that invokes MSI under the hood, or
+- Replace the example with a description of the MSI dialog-based UI, or
+- Note that the interactive CLI is provided by a ROCm-specific launcher tool
+  (separate from `msiexec`)
 
-### 💡 SUGGESTION: Frontmatter status field
+### ⚠️ IMPORTANT: Device-specific use cases lack formatting
 
-The frontmatter says `status: draft` which is correct. Consider also adding a `replaces:` or `related:` field pointing to RFC0009, since this is the Windows companion to the Linux packaging RFC.
+The five use cases under "Device-Specific Architecture Packages" (lines ~366–396)
+are written as plain text paragraphs without structured formatting. For example:
 
-### 💡 SUGGESTION: "Alternatives Considered" section missing
+```
+1. **ISV installer invokes ROCm Runtime Core via winget**:
 
-Per the project's CLAUDE.md conventions (and good RFC practice), an "Alternatives Considered" section would strengthen the document. For example:
-- Why MSI over MSIX?
-- Why `C:\Program Files\AMD\rocm\` vs `C:\AMD\ROCm\` (the legacy HIP SDK path)?
-- Why not require long paths universally?
+Winget starts launcher
+Launcher automatically detects available GPU architectures
+Runs installers for each GPU architecture (host installers and per device installers)
+```
 
-### 💡 SUGGESTION: ZIP archive naming inconsistency
+These read as bulleted steps but are formatted as consecutive lines, which
+renders poorly in markdown.
 
-Line 420 shows `rocm-core-X.Y.Z.zip` using a three-part version, but the directory inside is `rocm-core-X.Y\` using two-part. This is presumably intentional (patch versions install in place) but the mismatch in the example could confuse readers. Consider adding a brief note explaining this.
+**Recommendation:** Format each use case's steps as a numbered or bulleted list.
 
-### 💡 SUGGESTION: ROCM_PATH for ZIP packages contradicts ZIP requirements
+### 💡 SUGGESTION: Architecture naming inconsistency
 
-Line 192 states "Downloaded ROCM zip files should point ROCM_PATH to its location," but the ZIP requirements section (lines 425-427) says ZIP packages "Must not modify environment variables" and "Must not modify PATH." These are in tension — the first asks the user to set `ROCM_PATH`, the second says ZIP shouldn't touch env vars. The distinction is presumably that the *user* sets it manually vs. the *package* setting it, but this could be clearer.
+The document uses `gfx-110x` (with hyphen, line 356) in one place but
+`gfx1100` (no hyphen, line 395) elsewhere. TheRock uses the convention
+`gfx110X` (capital X, no hyphen) for architecture family references.
 
-### 📋 FUTURE WORK: Relationship to TheRock build artifacts
+**Recommendation:** Standardize on one naming convention, preferably matching
+TheRock's existing pattern (`gfx110X`).
 
-The RFC doesn't describe how TheRock's artifact system (the `artifact-*.toml` descriptors, component split of lib/run/dev/dbg/doc/test) maps to the MSI package boundaries defined here. This mapping will be important for automated packaging but is probably out of scope for a requirements RFC.
+### 💡 SUGGESTION: OpenCL section wording
 
-### 📋 FUTURE WORK: WiX/installer tooling
+The sentence (line 182):
 
-The RFC defines what MSI packages must do but doesn't specify or constrain the tooling (WiX, InstallShield, Advanced Installer, etc.). This is appropriate for a requirements doc, but a follow-up implementation RFC or design doc would need to address this.
+> "OpenCL will largely in part be sustained and no changes are expected to be
+> implemented."
+
+"Largely in part" is redundant. Consider simplifying to:
+
+> "OpenCL will be sustained as-is and no changes are expected."
+
+### 💡 SUGGESTION: `amd_comgr_3.dll` rename context
+
+The OpenCL section mentions renaming `amd_comgr_3.dll` to `amd_comgr_opencl.dll`
+"so that it can be shipped alongside the driver version 26.30 in Q3." This
+references a specific driver version and timeline that may go stale. Consider
+either removing the driver-version detail or noting it as a motivating example
+rather than a binding requirement.
+
+### 💡 SUGGESTION: `ROCM_PATH` "last-writer-wins" is stated twice
+
+The "last-writer-wins" behavior for `ROCM_PATH` is explained both in the
+Environment Variables section (line 458) and in the Registry Requirements
+section for `CurrentVersion` (line 489). Consider consolidating into a single
+note or cross-referencing to avoid redundancy.
+
+### 📋 FUTURE WORK: Mapping to TheRock build outputs
+
+The PR description mentions "how SDK components map to TheRock build outputs"
+as a goal, but the RFC focuses on installer requirements rather than the
+mapping from TheRock's artifact system (stages, components, `artifact-*.toml`)
+to MSI packages. This mapping will likely need a follow-up RFC or appendix as
+the implementation progresses.
 
 ---
 
@@ -137,35 +185,29 @@ The RFC defines what MSI packages must do but doesn't specify or constrain the t
 
 ### ❌ REQUIRED (Blocking):
 
-1. Fix all spelling/typographical errors throughout the document (~20+ instances)
+1. Fix pre-commit failures (trailing whitespace + mdformat table formatting)
+2. Add RFC0012 to the `docs/rfcs/README.md` index
 
 ### ✅ Recommended:
 
-1. Consolidate package tables into a single authoritative list to resolve inconsistencies
-2. Reconsider cache location (`Program Files` is not standard for writable caches on Windows)
-3. Clarify or defer per-user installation requirements
-4. Fix "Visual Studio Code Plugin" / "Visual Studio plugin" naming mismatch and consider whether this section belongs in a packaging RFC
+1. Add missing packages (`amdrocm-sysdeps`, `amdrocm-opencl`) to the
+   fine-grained packages table or explain their omission
+2. Clarify that the interactive CLI example requires a launcher application
+   separate from `msiexec`
+3. Format the device-specific use case steps as markdown lists
 
 ### 💡 Consider:
 
-1. Add `related: RFC0009` to frontmatter
-2. Add "Alternatives Considered" section
-3. Clarify ZIP archive naming (three-part version filename vs two-part directory)
-4. Reconcile ROCM_PATH guidance for ZIP packages
-
-### 📋 Future Follow-up:
-
-1. Define mapping from TheRock artifact system to MSI package boundaries
-2. Implementation RFC for installer tooling selection
+1. Standardize GPU architecture naming to match TheRock conventions (`gfx110X`)
+2. Simplify the OpenCL section wording
+3. Remove or soften the driver-version reference in the comgr rename context
+4. Consolidate the duplicate "last-writer-wins" explanations
 
 ---
 
 ## Testing Recommendations
 
-Documentation-only RFC — no functional tests needed. Recommend:
-- Spell check pass (e.g., `aspell`, `cspell`, or VS Code spell checker)
-- Internal review by someone with Windows MSI/WiX packaging experience to validate the MSI requirements are implementable as written
-- Cross-reference with RFC0009 to ensure consistent terminology and versioning semantics
+Documentation-only change — no functional tests needed. Pre-commit must pass.
 
 ---
 
@@ -173,4 +215,9 @@ Documentation-only RFC — no functional tests needed. Recommend:
 
 **Approval Status: ⚠️ CHANGES REQUESTED**
 
-The RFC covers the right topics and is well-organized. The blocking issue is the volume of typos — for a document meant to be published for cross-team review, these need to be fixed. The package table inconsistencies and cache location question should also be addressed before the RFC is finalized, though those could arguably be resolved during the RFC review process itself.
+The RFC is a solid requirements document that fills an important gap in TheRock's
+packaging story. The blocking issues are straightforward to fix (pre-commit
+formatting + README index). The important items around package table completeness
+and the interactive CLI example should also be addressed before merge to avoid
+reader confusion, but are less mechanical to resolve and may require input from
+the packaging team.
