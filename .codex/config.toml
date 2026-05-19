@@ -11,6 +11,8 @@ approval_policy = "on-request"
 sandbox = "elevated"
 
 [sandbox_workspace_write]
+# workaround https://github.com/openai/codex/issues/19715
+network_access = true
 # Keep these paths aligned with directory-map.md.
 writable_roots = [
   "D:/projects/TheRock",

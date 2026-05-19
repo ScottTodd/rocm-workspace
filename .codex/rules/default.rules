@@ -8,6 +8,19 @@
 
 prefix_rule(
     pattern = [
+        "gh",
+    ],
+    decision = "allow",
+    justification = "Allow read-only GitHub CLI lookups for ROCm workspace research and reviews.",
+    match = [
+        "gh issue view 3340 --repo ROCm/TheRock --json title,body,state,labels,url",
+        "gh pr view 2761 --repo ROCm/TheRock --json title,body,state,labels,url",
+        "gh pr checks 2761 --repo ROCm/TheRock",
+    ],
+)
+
+prefix_rule(
+    pattern = [
         "git",
         "-c",
         "safe.directory=D:/projects/TheRock",
