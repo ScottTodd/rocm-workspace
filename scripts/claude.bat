@@ -2,7 +2,7 @@
 REM Launch Claude Code with the workspace Python venv activated.
 REM
 REM Setup (one-time):
-REM   cd D:\projects\claude-rocm-workspace
+REM   cd D:\projects\rocm-workspace
 REM   py -V:3.12 -m venv 3.12.venv
 REM   .\3.12.venv\Scripts\activate.bat
 REM   pip install -r ..\TheRock\requirements.txt

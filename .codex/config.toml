@@ -1,0 +1,21 @@
+# Project-local Codex defaults for this meta-workspace.
+#
+# Codex loads project .codex/config.toml only after the project is trusted.
+# Restart Codex after changing this file so the sandbox is recreated with the
+# updated writable roots.
+
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+
+[windows]
+sandbox = "elevated"
+
+[sandbox_workspace_write]
+# workaround https://github.com/openai/codex/issues/19715
+network_access = true
+# Keep these paths aligned with directory-map.md.
+writable_roots = [
+  "D:/projects/TheRock",
+  "D:/projects/rockrel",
+  "D:/scratch/codex",
+]

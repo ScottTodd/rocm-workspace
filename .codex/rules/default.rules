@@ -1,0 +1,102 @@
+# Project-local Codex execution rules.
+#
+# These rules are loaded only after this workspace's .codex configuration is
+# trusted. They control which commands Codex may run outside the sandbox without
+# prompting. `match` and `not_match` entries below are validation examples, not
+# restrictions. The `git add` rules intentionally allow any path suffix after
+# the repo-scoped `git ... add` prefix.
+
+prefix_rule(
+    pattern = [
+        "gh",
+    ],
+    decision = "allow",
+    justification = "Allow read-only GitHub CLI lookups for ROCm workspace research and reviews.",
+    match = [
+        "gh issue view 3340 --repo ROCm/TheRock --json title,body,state,labels,url",
+        "gh pr view 2761 --repo ROCm/TheRock --json title,body,state,labels,url",
+        "gh pr checks 2761 --repo ROCm/TheRock",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        "git",
+        "-c",
+        "safe.directory=D:/projects/TheRock",
+        "-C",
+        "D:/projects/TheRock",
+        "add",
+    ],
+    decision = "allow",
+    justification = "Allow staging explicit TheRock paths after the user asks to commit.",
+    match = [
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock add build_tools/tests/artifact_backend_test.py",
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock add build_tools/tests/foo_test.py build_tools/foo.py",
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock add -- build_tools/tests/foo_test.py",
+    ],
+    not_match = [
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock commit -m msg",
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock push",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        "git",
+        "-c",
+        "safe.directory=D:/projects/TheRock",
+        "-C",
+        "D:/projects/TheRock",
+        "commit",
+        "-m",
+    ],
+    decision = "allow",
+    justification = "Allow repo-scoped TheRock commits after the user asks to commit; signing still requires the user's hardware token.",
+    match = [
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock commit -m msg",
+    ],
+    not_match = [
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock commit --amend -m msg",
+        "git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock push",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        "git",
+        "-C",
+        "D:/projects/rocm-workspace",
+        "add",
+    ],
+    decision = "allow",
+    justification = "Allow staging explicit rocm-workspace paths after the user asks to commit.",
+    match = [
+        "git -C D:/projects/rocm-workspace add AGENTS.md README.md",
+        "git -C D:/projects/rocm-workspace add .codex/config.toml .codex/rules/default.rules",
+        "git -C D:/projects/rocm-workspace add -- scripts/codex.bat",
+    ],
+    not_match = [
+        "git -C D:/projects/rocm-workspace commit -m msg",
+        "git -C D:/projects/rocm-workspace push",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        "git",
+        "-C",
+        "D:/projects/rocm-workspace",
+        "commit",
+        "-m",
+    ],
+    decision = "allow",
+    justification = "Allow repo-scoped rocm-workspace commits after the user asks to commit; signing still requires the user's hardware token.",
+    match = [
+        "git -C D:/projects/rocm-workspace commit -m msg",
+    ],
+    not_match = [
+        "git -C D:/projects/rocm-workspace commit --amend -m msg",
+        "git -C D:/projects/rocm-workspace push",
+    ],
+)

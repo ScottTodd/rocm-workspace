@@ -12,7 +12,7 @@ This document maps out where all ROCm-related directories live on this system.
 | rocm-systems | D:/projects/TheRock/rocm-systems | ROCm Systems Superrepo (submodule) |
 | rocm-libraries | D:/projects/TheRock/rocm-libraries | ROCm Libraries Superrepo (submodule) |
 | rockrel | D:/projects/rockrel | TheRock's release repository |
-| workspace | D:/projects/claude-rocm-workspace | This meta-workspace |
+| workspace | D:/projects/rocm-workspace | This meta-workspace |
 
 ## Build Trees
 
