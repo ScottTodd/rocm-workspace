@@ -49,7 +49,7 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 ```
 # New manifest scripts
 build_tools/github_actions/generate_pytorch_manifest_upfront.py
-build_tools/github_actions/upload_pytorch_manifests.py
+build_tools/github_actions/prepare_pytorch_manifests.py
 build_tools/github_actions/manifest_utils.py
 build_tools/github_actions/github_actions_api.py  # gha_resolve_git_ref, gha_fetch_file_contents
 external-builds/pytorch/checkout_from_manifest.py
@@ -237,7 +237,7 @@ Instead:
    pre-experiment behavior.
 2. [x] Keep and test the reusable manifest pieces:
    `generate_pytorch_manifest_upfront.py`, `checkout_from_manifest.py`,
-   `upload_pytorch_manifests.py`, `WorkflowOutputRoot.pytorch_manifest_dir()`,
+   `prepare_pytorch_manifests.py`, `WorkflowOutputRoot.pytorch_manifest_dir()`,
    and the GitHub API helpers.
 3. [x] Add unit tests for `generate_pytorch_manifest_upfront.py`.
    Cover stable vs nightly resolution, Linux vs Windows project defaults,
@@ -259,14 +259,14 @@ Instead:
    `multi_arch_build_portable_linux_pytorch_wheels.yml` for each
    `(python_version, pytorch_git_ref)` cell, preserving the existing release
    matrix shape while moving the build body into the reusable workflow.
-7. [ ] Consolidate manifest workflow plumbing into user-facing scripts.
+7. [x] Consolidate manifest workflow plumbing into user-facing scripts.
    Move manifest generation/upload/matrix output into
    `prepare_pytorch_manifests.py`; extend `checkout_from_manifest.py` to accept
    `--manifest-url` and validate the expected PyTorch ref. Keep unit tests on
    the functions inside these scripts for generation, upload path computation,
    matrix generation, manifest download, validation, and checkout command
    construction.
-8. [ ] Restructure `multi_arch_build_portable_linux_pytorch_wheels.yml` around
+8. [x] Restructure `multi_arch_build_portable_linux_pytorch_wheels.yml` around
    a `prepare_manifest` job. If `manifest_url` is provided, pass it through; if
    not, generate/upload one manifest for the requested Python/PyTorch cell.
    Make the build and test jobs consume that output instead of duplicating
