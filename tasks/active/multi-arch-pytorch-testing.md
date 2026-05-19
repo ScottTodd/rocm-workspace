@@ -27,9 +27,9 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 - [x] Add pytorch_manifest_dir() to WorkflowOutputRoot
 - [x] Clean up manifest format (consistent URLs, rocm_version under therock)
 - [ ] Test end-to-end on a real workflow run
-- [ ] Unit tests for generate_pytorch_manifest_upfront.py
-- [ ] Unit tests for checkout_from_manifest.py
-- [ ] Restructure multi-arch release workflow (orchestrator + per-cell)
+- [x] Unit tests for generate_pytorch_manifest_upfront.py
+- [x] Unit tests for checkout_from_manifest.py
+- [x] Restructure multi-arch release workflow (orchestrator + per-cell)
 - [ ] Test matrix script (configure_pytorch_test_matrix.py)
 - [ ] Add test jobs to multi-arch release workflows
 - [ ] Multi-arch CI workflows optionally call test workflows
@@ -147,10 +147,15 @@ post-build manifest generation.
 Manifests are uploaded to S3 at
 `{run_id}-{platform}/manifests/pytorch/{amdgpu_family}/`.
 
-Currently generated inline in the build job. Future: separate
-generate_manifest job that runs first and uploads to S3, with the build
-job downloading it. This enables an orchestrator to freeze commits once
-for the entire build matrix (#1236).
+For the new multi-arch Linux build workflow, manifests are not scoped by GPU
+family and are uploaded under `{run_id}-linux/manifests/pytorch/`.
+
+The multi-arch Linux release workflow now generates all PyTorch manifests once
+before expanding the build matrix. It uploads those manifests, generates a
+matrix with an explicit `manifest_url` for each `(pytorch_git_ref,
+python_version)` cell, and the reusable build workflow downloads its assigned
+manifest. Direct dispatch of the reusable build workflow still generates and
+uploads a one-off manifest when `manifest_url` is not provided.
 
 ### Repo URL consistency
 
@@ -162,13 +167,36 @@ we now match that for URLs we construct.
 
 ```
 orchestrator
-  +-> generate_manifest (one job, uploads to S3)
+  +-> prepare_manifests (one job, uploads to S3, emits matrix with manifest_url)
   +-> build_and_test (matrix: pytorch_ref x python_version)
         calls: reusable per-cell workflow
+          +-> prepare_manifest (passes through manifest_url, or generates one)
           +-> build (downloads manifest, checks out, builds, uploads wheels)
-          +-> generate_test_matrix (which families, runner labels)
-          +-> test (matrix: family, calls test_pytorch_wheels.yml)
+          +-> generate_test_matrix (reads manifest/package versions)
+          +-> test (matrix: family/test_level, calls test_pytorch_wheels.yml)
 ```
+
+The per-cell reusable workflow should run tests for a successful build without
+waiting for unrelated matrix cells. For example, a successful `release/2.10`
+build should be able to test even if a separate `nightly` build fails. Keep the
+parent matrix `fail-fast: false` and make test jobs depend only on the build
+inside the same reusable workflow invocation.
+
+### User-facing script entry points
+
+Prefer a small number of user-facing scripts over many low-level CLI wrappers:
+
+- `prepare_pytorch_manifests.py`: generate one or more manifests, upload them
+  when requested, and emit either a single `manifest_url` or a build matrix with
+  explicit `manifest_url` entries. Owns Python/PyTorch release defaults and
+  exclusions so workflows do not need inline lists like `PYTHON_VERSIONS`,
+  `PYTORCH_GIT_REFS`, or `release/2.8|3.14`.
+- `checkout_from_manifest.py`: accept either `--manifest` or `--manifest-url`,
+  validate the expected PyTorch ref when supplied, download if needed, and
+  check out the requested source projects.
+
+Keep testable units as importable functions inside those scripts. Do not add
+extra CLI entry points solely to make individual operations testable.
 
 ### Test matrix and developer overrides
 
@@ -201,24 +229,24 @@ Instead:
 
 ## Next steps
 
-1. [ ] Revert the non-multi-arch workflow experiment on this branch.
+1. [x] Revert the non-multi-arch workflow experiment on this branch.
    Restore `.github/workflows/build_portable_linux_pytorch_wheels.yml`,
    `.github/workflows/build_windows_pytorch_wheels.yml`,
    `build_tools/github_actions/upload_pytorch_manifest.py`, and
    `build_tools/github_actions/tests/upload_pytorch_manifest_test.py` to the
    pre-experiment behavior.
-2. [ ] Keep and test the reusable manifest pieces:
+2. [x] Keep and test the reusable manifest pieces:
    `generate_pytorch_manifest_upfront.py`, `checkout_from_manifest.py`,
    `upload_pytorch_manifests.py`, `WorkflowOutputRoot.pytorch_manifest_dir()`,
    and the GitHub API helpers.
-3. [ ] Add unit tests for `generate_pytorch_manifest_upfront.py`.
+3. [x] Add unit tests for `generate_pytorch_manifest_upfront.py`.
    Cover stable vs nightly resolution, Linux vs Windows project defaults,
    `release/2.12` matrix coverage, manifest version fields, and the
    `--output` single-manifest mode.
-4. [ ] Add unit tests for `checkout_from_manifest.py`.
+4. [x] Add unit tests for `checkout_from_manifest.py`.
    Mock subprocess calls and verify project ordering, checkout directories,
    `--no-hipify`, missing project errors, and repo/commit argument plumbing.
-5. [ ] Create `.github/workflows/multi_arch_build_portable_linux_pytorch_wheels.yml`
+5. [x] Create `.github/workflows/multi_arch_build_portable_linux_pytorch_wheels.yml`
    as the reusable per-cell Linux multi-arch build workflow. It should accept
    `python_version`, `pytorch_git_ref`, `amdgpu_families`, `rocm_version`,
    `rocm_package_find_links_url`, `release_type`, `repository`, `ref`, and
@@ -226,19 +254,37 @@ Instead:
    build fat wheels; split torch/torchvision; upload wheels to the multi-arch
    Python release bucket; upload the manifest to artifacts; and expose package
    versions from the manifest.
-6. [ ] Update `.github/workflows/multi_arch_release_linux_pytorch_wheels.yml`
+6. [x] Update `.github/workflows/multi_arch_release_linux_pytorch_wheels.yml`
    into the orchestrator. Its matrix should call
    `multi_arch_build_portable_linux_pytorch_wheels.yml` for each
    `(python_version, pytorch_git_ref)` cell, preserving the existing release
    matrix shape while moving the build body into the reusable workflow.
-7. [ ] Run a focused Linux workflow-dispatch validation on a small matrix
+7. [ ] Consolidate manifest workflow plumbing into user-facing scripts.
+   Move manifest generation/upload/matrix output into
+   `prepare_pytorch_manifests.py`; extend `checkout_from_manifest.py` to accept
+   `--manifest-url` and validate the expected PyTorch ref. Keep unit tests on
+   the functions inside these scripts for generation, upload path computation,
+   matrix generation, manifest download, validation, and checkout command
+   construction.
+8. [ ] Restructure `multi_arch_build_portable_linux_pytorch_wheels.yml` around
+   a `prepare_manifest` job. If `manifest_url` is provided, pass it through; if
+   not, generate/upload one manifest for the requested Python/PyTorch cell.
+   Make the build and test jobs consume that output instead of duplicating
+   manifest logic.
+9. [ ] Add per-cell quick test orchestration inside the reusable build workflow.
+   Generate a small test matrix from the manifest and package versions for the
+   just-built cell, then call `test_pytorch_wheels.yml` with `multi_arch=true`
+   and manifest-driven test-source checkout. Start with a conservative test
+   subset and add `test_level` controls before broadening.
+10. [ ] Run a focused Linux workflow-dispatch validation on a small matrix
    (one Python version, one PyTorch ref, one or two families). Verify the
    manifest is generated upfront, the build checks out from it, wheels upload to
    `whl-multi-arch`, and the manifest index is linked from the run summary.
-8. [ ] After Linux build plumbing is stable, add test orchestration:
-   `configure_pytorch_test_matrix.py`, calls to `test_pytorch_wheels.yml` with
-   `multi_arch=true`, and manifest-driven test-source checkout.
-9. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
+11. [ ] After Linux build/test plumbing is stable, decide whether the parent
+   release workflow should always use the full release matrix or expose an
+   explicit developer-oriented matrix profile. The child workflow remains the
+   preferred path for a single Python/PyTorch combination.
+12. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
    path is passing and reviewed.
 
 ## Deferred CI notes
