@@ -50,6 +50,7 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 # New manifest scripts
 build_tools/github_actions/generate_pytorch_manifest_upfront.py
 build_tools/github_actions/prepare_pytorch_manifests.py
+build_tools/github_actions/configure_pytorch_test_matrix.py
 build_tools/github_actions/manifest_utils.py
 build_tools/github_actions/github_actions_api.py  # gha_resolve_git_ref, gha_fetch_file_contents
 external-builds/pytorch/checkout_from_manifest.py
@@ -172,8 +173,8 @@ orchestrator
         calls: reusable per-cell workflow
           +-> prepare_manifest (passes through manifest_url, or generates one)
           +-> build (downloads manifest, checks out, builds, uploads wheels)
-          +-> generate_test_matrix (reads manifest/package versions)
-          +-> test (matrix: family/test_level, calls test_pytorch_wheels.yml)
+          +-> generate_quick_test_matrix (auto: built families; overrideable)
+          +-> test (matrix: family/runner, calls test_pytorch_wheels.yml)
 ```
 
 The per-cell reusable workflow should run tests for a successful build without
@@ -200,9 +201,16 @@ extra CLI entry points solely to make individual operations testable.
 
 ### Test matrix and developer overrides
 
-Script controls which (pytorch_ref, python_version, family) combos to test.
-Override inputs: `python_versions`, `pytorch_git_refs`, `test_families_override`.
-Future: `test_level` (none/smoke/full) per entry.
+Script controls which `(pytorch_ref, python_version)` combos to build and which
+GPU families to quick-test after an individual build. Override inputs:
+`python_versions`, `pytorch_git_refs`, and quick-test GPU families. Quick tests
+default to `auto`, meaning "test the families covered by the build"; `none`
+skips quick tests explicitly.
+
+Keep full PyTorch test dispatch separate from quick tests: model that path after
+PR #4499 with an explicit `run_full_pytorch_tests` input plus release/cadence
+rules, and pass the build cell's `manifest_url`, `torch_version`, and
+`package_index_url` outputs to `test_pytorch_wheels_full.yml`.
 
 ### Scope reset: focus on multi-arch workflows
 
@@ -271,11 +279,15 @@ Instead:
    not, generate/upload one manifest for the requested Python/PyTorch cell.
    Make the build and test jobs consume that output instead of duplicating
    manifest logic.
-9. [ ] Add per-cell quick test orchestration inside the reusable build workflow.
-   Generate a small test matrix from the manifest and package versions for the
-   just-built cell, then call `test_pytorch_wheels.yml` with `multi_arch=true`
-   and manifest-driven test-source checkout. Start with a conservative test
-   subset and add `test_level` controls before broadening.
+9. [x] Add per-cell quick test orchestration inside the reusable build workflow.
+   Add a `test_amdgpu_families` input, generate a small quick-test matrix with
+   `configure_pytorch_test_matrix.py`, then call `test_pytorch_wheels.yml` with
+   `multi_arch=true`, the package index URL output by the publish step, and
+   manifest-driven test-source checkout. The default `auto` mode tests all
+   built families that have configured runners; use `none` to skip tests or a
+   narrower semicolon-separated family list to test a subset. Initial
+   validation target is direct-dispatch build/test for one Python version, one
+   PyTorch ref, and `gfx950`.
 10. [ ] Run a focused Linux workflow-dispatch validation on a small matrix
    (one Python version, one PyTorch ref, one or two families). Verify the
    manifest is generated upfront, the build checks out from it, wheels upload to
@@ -284,7 +296,13 @@ Instead:
    release workflow should always use the full release matrix or expose an
    explicit developer-oriented matrix profile. The child workflow remains the
    preferred path for a single Python/PyTorch combination.
-12. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
+12. [ ] Add full-test dispatch after quick Linux validation. Follow the shape
+   from PR #4499, but dispatch from each successful reusable build cell using
+   that cell's manifest URL, torch version output, and package index URL output
+   instead of re-resolving package versions from the index. Keep this separate
+   from inline quick tests via a `run_full_pytorch_tests` boolean and cadence
+   rules for daily release branches vs Sunday-only PyTorch nightly.
+13. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
    path is passing and reviewed.
 
 ## Deferred CI notes
