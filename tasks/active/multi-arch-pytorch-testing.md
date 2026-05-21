@@ -288,22 +288,74 @@ Instead:
    narrower semicolon-separated family list to test a subset. Initial
    validation target is direct-dispatch build/test for one Python version, one
    PyTorch ref, and `gfx950`.
-10. [ ] Run a focused Linux workflow-dispatch validation on a small matrix
+10. [ ] Fix review-blocking manifest pin behavior before opening script PRs.
+   `generate_pytorch_manifest_upfront.py` should fail fast if a stable
+   PyTorch ref is missing a required `related_commits` pin for audio, vision,
+   or apex. Do not fall back to a branch like `nightly`, `master`, or `main`.
+   Add a regression test for the missing-pin case. Consider making malformed
+   `related_commits` lines fatal as part of the same cleanup.
+11. [ ] Improve GitHub Actions job summaries for multi-arch PyTorch runs.
+   The manifest preparation summary should keep the manifest index link, add
+   links to individual manifest files, and show the generated build matrix
+   (`pytorch_git_ref` x `python_version`) with explicit manifest URLs. The
+   quick-test configuration job should not post a separate noisy summary when
+   the per-test jobs immediately below it already summarize what is being
+   tested. The PyTorch test report should include the build manifest link when
+   `manifest_url` is provided.
+12. [ ] Add developer debugging docs for the new multi-arch PyTorch workflows.
+   Extend `docs/development/github_actions_debugging.md` near "Testing PyTorch
+   release workflows" with narrow dev-dispatch examples for
+   `multi_arch_release_linux_pytorch_wheels.yml`, direct child workflow usage
+   once available on the default branch, semicolon-separated list inputs,
+   manifest locations, and how build outputs feed quick tests.
+13. [ ] Decide how much inline shell cleanup is required before the workflow
+   PR. The new Linux reusable workflow still has copied cache-flag and wheel
+   split shell logic. Either extract the largest new blocks into scripts before
+   review or explicitly scope that as a follow-up in the workflow PR.
+14. [ ] Run a focused Linux workflow-dispatch validation on a small matrix
    (one Python version, one PyTorch ref, one or two families). Verify the
    manifest is generated upfront, the build checks out from it, wheels upload to
    `whl-multi-arch`, and the manifest index is linked from the run summary.
-11. [ ] After Linux build/test plumbing is stable, decide whether the parent
+15. [ ] After Linux build/test plumbing is stable, decide whether the parent
    release workflow should always use the full release matrix or expose an
    explicit developer-oriented matrix profile. The child workflow remains the
    preferred path for a single Python/PyTorch combination.
-12. [ ] Add full-test dispatch after quick Linux validation. Follow the shape
+16. [ ] Add full-test dispatch after quick Linux validation. Follow the shape
    from PR #4499, but dispatch from each successful reusable build cell using
    that cell's manifest URL, torch version output, and package index URL output
    instead of re-resolving package versions from the index. Keep this separate
    from inline quick tests via a `run_full_pytorch_tests` boolean and cadence
    rules for daily release branches vs Sunday-only PyTorch nightly.
-13. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
+17. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
    path is passing and reviewed.
+
+## PR sequence
+
+1. Manifest foundation:
+   `generate_pytorch_manifest_upfront.py`, `prepare_pytorch_manifests.py`,
+   `checkout_from_manifest.py`, `write_pytorch_manifest_versions.py`,
+   manifest utilities, GitHub API helpers, workflow output helpers, focused
+   unit tests, and manifest checkout docs. Include the fail-fast
+   related-commit fix. Keep workflow edits out of this PR unless a helper is
+   only meaningful with one small caller change.
+2. Standalone Linux multi-arch PyTorch build/test workflow:
+   `.github/workflows/multi_arch_build_portable_linux_pytorch_wheels.yml`,
+   `test_pytorch_wheels.yml`, `test_pytorch_wheels_full.yml`,
+   `configure_pytorch_test_matrix.py`, and
+   `publish_pytorch_to_release_bucket.py` outputs. This PR should be useful on
+   its own: direct dispatch can generate or consume a manifest, build one
+   Python/PyTorch version combination, upload wheels, and run quick tests. Add
+   the test-summary cleanup and manifest links in the PyTorch test report here.
+3. Linux multi-arch release orchestrator integration:
+   `.github/workflows/multi_arch_release_linux_pytorch_wheels.yml` generates
+   all release manifests once, emits the explicit matrix, and calls the
+   standalone build/test workflow for each cell. Include manifest summary
+   improvements here: index link, individual manifest links, and generated
+   matrix display. Add `docs/development/github_actions_debugging.md` coverage
+   for direct build workflow runs and release-orchestrator runs.
+4. Follow-up platform/test expansion:
+   Windows reusable build/orchestrator parity, full-test dispatch, and CI
+   plumbing.
 
 ## Deferred CI notes
 
