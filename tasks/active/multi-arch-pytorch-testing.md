@@ -328,6 +328,10 @@ Instead:
    rules for daily release branches vs Sunday-only PyTorch nightly.
 17. [ ] Repeat the reusable-build/orchestrator split for Windows after the Linux
    path is passing and reviewed.
+18. [ ] Optimize manifest-based test source checkout. For test-only repro and
+   workflow paths, add a way for `checkout_from_manifest.py` or the underlying
+   PyTorch repo fetch scripts to skip `git submodule update`, similar to how
+   they can already skip hipify with `--no-hipify`.
 
 ## PR sequence
 
