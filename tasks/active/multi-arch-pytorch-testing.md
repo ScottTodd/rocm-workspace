@@ -199,6 +199,24 @@ Prefer a small number of user-facing scripts over many low-level CLI wrappers:
 Keep testable units as importable functions inside those scripts. Do not add
 extra CLI entry points solely to make individual operations testable.
 
+Do not add a separate `pytorch_manifest_manager.py` wrapper unless it actually
+retires or renames an existing entry point. A single coherent script with
+well-factored functions is preferable to a thin +300 LOC CLI layer over two
+large scripts.
+
+For future JAX and other framework releases, avoid forcing a generic PyTorch-
+shaped manager abstraction too early. The likely reusable layer is a small set
+of shared helpers for listing manifests from local/S3 locations, reading JSON
+manifests, uploading manifest directories, and emitting GitHub Actions outputs.
+Each framework can keep its own release-ref and version logic.
+
+For the longer-term "freeze commits before release" flow,
+`prepare_pytorch_manifests.py` should also be able to consume an existing
+manifest directory URL and emit the explicit build matrix from the manifests in
+that directory. Prefer listing the S3 prefix directly when credentials are
+available instead of relying on deterministic filenames, an uploaded JSON map,
+or server-side `index.html` generation.
+
 ### Test matrix and developer overrides
 
 Script controls which `(pytorch_ref, python_version)` combos to build and which
@@ -332,6 +350,12 @@ Instead:
    workflow paths, add a way for `checkout_from_manifest.py` or the underlying
    PyTorch repo fetch scripts to skip `git submodule update`, similar to how
    they can already skip hipify with `--no-hipify`.
+19. [ ] Add manifest-directory consume mode to `prepare_pytorch_manifests.py`.
+   Given a local manifest directory or S3-backed manifest directory URL, list
+   the manifest JSON files, read their PyTorch refs and Python versions, and
+   emit the same explicit build matrix used after freshly generated manifests.
+   This should support future scheduler workflows that freeze commits in one
+   job and later dispatch release workflows from the frozen manifest directory.
 
 ## PR sequence
 
