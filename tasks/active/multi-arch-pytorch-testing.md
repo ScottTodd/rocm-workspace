@@ -217,6 +217,38 @@ that directory. Prefer listing the S3 prefix directly when credentials are
 available instead of relying on deterministic filenames, an uploaded JSON map,
 or server-side `index.html` generation.
 
+### Alternatives considered
+
+#### Freeze only framework root commits
+
+For PyTorch, the minimum commit freeze is probably just TheRock plus the root
+`torch` commit. A pinned `torch` commit should, when the `related_commits` and
+`ci_commit_pins` files are complete, determine the other source repository
+commits during checkout. The same higher-level idea could support future JAX
+releases: one scheduler job freezes root refs for TheRock, PyTorch, JAX, and
+other frameworks, then dispatches framework-specific release jobs with those
+frozen roots.
+
+This is a useful future direction, but it is weaker as the direct build/test
+contract. Reruns would still depend on later checkout-time interpretation of
+framework-specific pin files and repository layout. Keep that as a scheduler
+layer, not as the only data passed into build and test jobs.
+
+#### Expanded manifests as the build/test contract
+
+The current PyTorch approach expands the root torch ref into a full manifest
+before build jobs run. That is more verbose, but it gives build, test, rerun,
+and local repro paths one concrete object to consume. It also keeps the
+manifest-driven checkout script useful for developers: generate a manifest,
+then check out exactly the sources from that manifest, without manually
+matching several repo commands from docs.
+
+For JAX and other frameworks, avoid forcing a PyTorch-shaped manifest manager
+too early. A future scheduler can freeze root commits first, then call
+framework-specific expanders to produce the expanded manifests consumed by
+release workflows. Smaller frameworks may produce smaller manifests while still
+using the same manifest-directory, upload, checkout, and summary patterns.
+
 ### Test matrix and developer overrides
 
 Script controls which `(pytorch_ref, python_version)` combos to build and which
