@@ -43,6 +43,12 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 - Issue: https://github.com/ROCm/TheRock/issues/1236 (commit manifests)
 - PR #4996: `multi_arch` input for test workflows (merged)
 - PR #5107: drop whl-staging, publish directly to whl-multi-arch (merged)
+- PR #5406: GitHub Actions API ref/file helpers
+  (`users/scotttodd/torch-github-actions-api`, merged)
+- PR #5407: export PyTorch version suffix from `determine_version.py`
+  (`users/scotttodd/torch-version-suffix`, merged)
+- PR #5452: split reusable multi-arch PyTorch build workflows
+  (`users/scotttodd/torch-reusable-pytorch-build-workflows`, in review)
 
 ### Key files
 
@@ -338,7 +344,7 @@ Instead:
    narrower semicolon-separated family list to test a subset. Initial
    validation target is direct-dispatch build/test for one Python version, one
    PyTorch ref, and `gfx950`.
-10. [ ] Fix review-blocking manifest pin behavior before opening script PRs.
+10. [x] Fix review-blocking manifest pin behavior before opening script PRs.
    `generate_pytorch_manifest_upfront.py` should fail fast if a stable
    PyTorch ref is missing a required `related_commits` pin for audio, vision,
    or apex. Do not fall back to a branch like `nightly`, `master`, or `main`.
@@ -391,14 +397,19 @@ Instead:
 
 ## PR sequence
 
-1. Manifest foundation:
+1. GitHub Actions API helpers:
+   PR #5406, `users/scotttodd/torch-github-actions-api`. Adds ref resolution
+   and file-content fetch helpers used by manifest generation.
+2. Version suffix export:
+   PR #5407, `users/scotttodd/torch-version-suffix`. Makes
+   `determine_version.py` export the PyTorch version suffix for later manifest
+   generation/build consistency.
+3. Manifest foundation:
    `generate_pytorch_manifest_upfront.py`, `prepare_pytorch_manifests.py`,
-   `checkout_from_manifest.py`, `write_pytorch_manifest_versions.py`,
-   manifest utilities, GitHub API helpers, workflow output helpers, focused
-   unit tests, and manifest checkout docs. Include the fail-fast
-   related-commit fix. Keep workflow edits out of this PR unless a helper is
-   only meaningful with one small caller change.
-2. Standalone Linux multi-arch PyTorch build/test workflow:
+   `checkout_from_manifest.py`, manifest utilities, workflow output helpers,
+   focused unit tests, and manifest checkout docs. Include the fail-fast
+   related-commit fix. Planned for next week.
+4. Standalone Linux multi-arch PyTorch build/test workflow:
    `.github/workflows/multi_arch_build_portable_linux_pytorch_wheels.yml`,
    `test_pytorch_wheels.yml`, `test_pytorch_wheels_full.yml`,
    `configure_pytorch_test_matrix.py`, and
@@ -406,16 +417,41 @@ Instead:
    its own: direct dispatch can generate or consume a manifest, build one
    Python/PyTorch version combination, upload wheels, and run quick tests. Add
    the test-summary cleanup and manifest links in the PyTorch test report here.
-3. Linux multi-arch release orchestrator integration:
+   Planned after the manifest foundation PR.
+5. Linux multi-arch release orchestrator integration:
    `.github/workflows/multi_arch_release_linux_pytorch_wheels.yml` generates
    all release manifests once, emits the explicit matrix, and calls the
    standalone build/test workflow for each cell. Include manifest summary
    improvements here: index link, individual manifest links, and generated
    matrix display. Add `docs/development/github_actions_debugging.md` coverage
-   for direct build workflow runs and release-orchestrator runs.
-4. Follow-up platform/test expansion:
+   for direct build workflow runs and release-orchestrator runs. Planned after
+   the standalone workflow PR.
+6. Follow-up platform/test expansion:
    Windows reusable build/orchestrator parity, full-test dispatch, and CI
    plumbing.
+
+## Current manifest foundation cleanup
+
+While PR #5452 is in review, the next branch to prepare is
+`users/scotttodd/torch-manifest-foundation`.
+
+Cleanup priorities before opening that PR:
+
+- Simplify tests so they cover manifest contents, matrix outputs, checkout
+  command interfaces, version checks, and GitHub/API boundaries instead of
+  asserting incidental markdown summary formatting.
+- Keep non-release and fork behavior easy to extend later. Do not solve it in
+  this PR, but document the current contract: `nightly` resolves against
+  upstream `pytorch/pytorch`, other refs resolve against `ROCm/pytorch`, full
+  ecosystem manifests require release-style pin files, and `--projects pytorch`
+  is the narrow branch-development escape hatch.
+- Keep Windows Triton behavior explicit. The current default excludes Triton on
+  Windows. Before review, remove any docs that imply unsupported Windows Triton
+  opt-in works, or add an explicit escape hatch for early bring-up. The natural
+  future default should follow upstream PyTorch pins once the same pin format is
+  available.
+- Treat GitHub API retry/backoff as separate unless it becomes necessary for
+  this PR. The foundation currently fails fast with clear API errors.
 
 ## Deferred CI notes
 
