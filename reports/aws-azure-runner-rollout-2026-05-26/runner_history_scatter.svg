@@ -1,0 +1,410 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+<defs>
+<style>
+text { font-family: Arial, Helvetica, sans-serif; fill: #111827; }
+.title { font-size: 24px; font-weight: 700; }
+.subtitle { font-size: 13px; fill: #4b5563; }
+.axis { stroke: #374151; stroke-width: 1.25; }
+.grid { stroke: #e5e7eb; stroke-width: 1; }
+.tick { font-size: 12px; fill: #374151; }
+.label { font-size: 13px; font-weight: 700; fill: #1f2937; }
+.legend { font-size: 13px; fill: #1f2937; }
+.trend { stroke-width: 2.5; stroke-dasharray: 8 6; fill: none; opacity: 0.9; }
+.point { stroke-width: 1.7; opacity: 0.9; }
+.partial { stroke-width: 2.2; opacity: 0.75; }
+.note { font-size: 12px; fill: #6b7280; }
+</style>
+</defs>
+<rect width="1280" height="760" fill="#ffffff"/>
+<text x="42.0" y="42.0" class="title">TheRock Multi-Arch CI Linux Build Time by Runner</text>
+<text x="42.0" y="64.0" class="subtitle">Main branch runs after the 20% AWS rollout; y-axis is sum of Linux build job durations, converted from seconds to hours.</text>
+<line x1="92" y1="632.0" x2="1060" y2="632.0" class="grid"/>
+<text x="80.0" y="636.0" class="tick" text-anchor="end">0</text>
+<line x1="92" y1="522.0" x2="1060" y2="522.0" class="grid"/>
+<text x="80.0" y="526.0" class="tick" text-anchor="end">5</text>
+<line x1="92" y1="412.0" x2="1060" y2="412.0" class="grid"/>
+<text x="80.0" y="416.0" class="tick" text-anchor="end">10</text>
+<line x1="92" y1="302.0" x2="1060" y2="302.0" class="grid"/>
+<text x="80.0" y="306.0" class="tick" text-anchor="end">15</text>
+<line x1="92" y1="192.0" x2="1060" y2="192.0" class="grid"/>
+<text x="80.0" y="196.0" class="tick" text-anchor="end">20</text>
+<line x1="92" y1="82.0" x2="1060" y2="82.0" class="grid"/>
+<text x="80.0" y="86.0" class="tick" text-anchor="end">25</text>
+<line x1="144.0" y1="82" x2="144.0" y2="632" class="grid"/>
+<text x="144.0" y="654.0" class="tick" text-anchor="middle">May 19</text>
+<line x1="257.2" y1="82" x2="257.2" y2="632" class="grid"/>
+<text x="257.2" y="654.0" class="tick" text-anchor="middle">May 20</text>
+<line x1="370.3" y1="82" x2="370.3" y2="632" class="grid"/>
+<text x="370.3" y="654.0" class="tick" text-anchor="middle">May 21</text>
+<line x1="483.5" y1="82" x2="483.5" y2="632" class="grid"/>
+<text x="483.5" y="654.0" class="tick" text-anchor="middle">May 22</text>
+<line x1="596.7" y1="82" x2="596.7" y2="632" class="grid"/>
+<text x="596.7" y="654.0" class="tick" text-anchor="middle">May 23</text>
+<line x1="709.8" y1="82" x2="709.8" y2="632" class="grid"/>
+<text x="709.8" y="654.0" class="tick" text-anchor="middle">May 24</text>
+<line x1="823.0" y1="82" x2="823.0" y2="632" class="grid"/>
+<text x="823.0" y="654.0" class="tick" text-anchor="middle">May 25</text>
+<line x1="936.1" y1="82" x2="936.1" y2="632" class="grid"/>
+<text x="936.1" y="654.0" class="tick" text-anchor="middle">May 26</text>
+<line x1="92" y1="632" x2="1060" y2="632" class="axis"/>
+<line x1="92" y1="82" x2="92" y2="632" class="axis"/>
+<text x="576.0" y="714.0" class="label" text-anchor="middle">Workflow run creation date (commit SHA shown in point hover text)</text>
+<text x="24" y="357.0" class="label" text-anchor="middle" transform="rotate(-90 24 357.0)">Linux build duration sum (hours)</text>
+<line x1="124.1" y1="500.1" x2="918.9" y2="444.9" class="trend" stroke="#c2410c"><title>AWS trend line, completed runs only</title></line>
+<line x1="115.0" y1="442.2" x2="1011.0" y2="458.5" class="trend" stroke="#1d4ed8"><title>Azure trend line, completed runs only</title></line>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26050628081" target="_blank"><circle cx="115.0" cy="449.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5013 (974db70)
+2026-05-18 17:51 UTC
+seconds_sum: 29,928 (8.31 h)
+Linux build jobs: 14
+status: completed / failure
+[ci] Increase AWS runner weight from 10% to 20% (#5318)
+https://github.com/ROCm/TheRock/actions/runs/26050628081</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26050808954" target="_blank"><circle cx="115.3" cy="454.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5014 (87db81d)
+2026-05-18 17:55 UTC
+seconds_sum: 29,114 (8.09 h)
+Linux build jobs: 14
+status: completed / failure
+[ci] Removing WSL build stage from multi_arch pipeline (#5317)
+https://github.com/ROCm/TheRock/actions/runs/26050808954</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26056513923" target="_blank"><polygon points="124.1,448.0 130.1,454.0 124.1,460.0 118.1,454.0" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5026 (233f0a3)
+2026-05-18 19:46 UTC
+seconds_sum: 29,133 (8.09 h)
+Linux build jobs: 14
+status: completed / failure
+[ci] fixing pytorch build wheels for forked repos (#5277)
+https://github.com/ROCm/TheRock/actions/runs/26056513923</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26069443891" target="_blank"><circle cx="148.3" cy="466.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5050 (30db0c3)
+2026-05-19 00:54 UTC
+seconds_sum: 27,152 (7.54 h)
+Linux build jobs: 14
+status: completed / failure
+[CI] Correct the relative paths in `build_native_linux_packages.yml` …
+https://github.com/ROCm/TheRock/actions/runs/26069443891</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26075931769" target="_blank"><circle cx="164.4" cy="459.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5053 (0a493c0)
+2026-05-19 04:19 UTC
+seconds_sum: 28,286 (7.86 h)
+Linux build jobs: 14
+status: completed / failure
+Media Tests - Enable extended rocdecode tests (#5319)
+https://github.com/ROCm/TheRock/actions/runs/26075931769</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26080138792" target="_blank"><circle cx="174.1" cy="460.0" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5054 (41b84b3)
+2026-05-19 06:22 UTC
+seconds_sum: 28,143 (7.82 h)
+Linux build jobs: 14
+status: completed / failure
+Enable amd-dbgapi on Windows
+https://github.com/ROCm/TheRock/actions/runs/26080138792</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26104218782" target="_blank"><circle cx="212.8" cy="456.4" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5080 (85b5d0e)
+2026-05-19 14:35 UTC
+seconds_sum: 28,741 (7.98 h)
+Linux build jobs: 14
+status: completed / failure
+[hipDNN] ALMIOPEN-1869 Add nanobind and robin-map third-party depende…
+https://github.com/ROCm/TheRock/actions/runs/26104218782</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26110711220" target="_blank"><polygon points="221.7,624.7 227.7,630.7 221.7,636.7 215.7,630.7" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5094 (a208836)
+2026-05-19 16:28 UTC
+seconds_sum: 216 (0.06 h)
+Linux build jobs: 2
+status: completed / failure
+[ci] Add resource spec file generation before running rocPrim ctest (…
+https://github.com/ROCm/TheRock/actions/runs/26110711220</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26110713741" target="_blank"><circle cx="221.7" cy="476.4" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5095 (c154198)
+2026-05-19 16:28 UTC
+seconds_sum: 25,459 (7.07 h)
+Linux build jobs: 14
+status: completed / failure
+Drop generating index.html generation (#5171)
+https://github.com/ROCm/TheRock/actions/runs/26110713741</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26112199871" target="_blank"><circle cx="223.9" cy="463.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5102 (0617c10)
+2026-05-19 16:56 UTC
+seconds_sum: 27,633 (7.68 h)
+Linux build jobs: 14
+status: completed / failure
+Publish multi-arch PyTorch wheels directly to whl-multi-arch (#5107)
+https://github.com/ROCm/TheRock/actions/runs/26112199871</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26114171095" target="_blank"><polygon points="226.8,446.2 232.8,452.2 226.8,458.2 220.8,452.2" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5107 (794702e)
+2026-05-19 17:33 UTC
+seconds_sum: 29,427 (8.17 h)
+Linux build jobs: 14
+status: completed / failure
+[ci] excluding hipcc test for windows due to `offload-arch.exe` error…
+https://github.com/ROCm/TheRock/actions/runs/26114171095</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26115600835" target="_blank"><circle cx="228.9" cy="476.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5112 (d430c10)
+2026-05-19 18:00 UTC
+seconds_sum: 25,506 (7.08 h)
+Linux build jobs: 14
+status: completed / failure
+[ci] Fix RPM and DEB packages for forked repos (#5328)
+https://github.com/ROCm/TheRock/actions/runs/26115600835</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26125203290" target="_blank"><circle cx="243.3" cy="464.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5120 (48e5305)
+2026-05-19 21:03 UTC
+seconds_sum: 27,478 (7.63 h)
+Linux build jobs: 14
+status: completed / failure
+Update package.json to include missing components (#5226)
+https://github.com/ROCm/TheRock/actions/runs/26125203290</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26136676857" target="_blank"><circle cx="266.7" cy="454.3" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5132 (5d9fe83)
+2026-05-20 02:00 UTC
+seconds_sum: 29,079 (8.08 h)
+Linux build jobs: 14
+status: completed / failure
+Update checkout by SHA, add option for install with versioned package…
+https://github.com/ROCm/TheRock/actions/runs/26136676857</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26144859694" target="_blank"><circle cx="286.3" cy="458.8" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5137 (f33bbb7)
+2026-05-20 06:11 UTC
+seconds_sum: 28,336 (7.87 h)
+Linux build jobs: 14
+status: completed / failure
+Bump rocm-systems from c2c4b25 to e682406 (#5338)
+https://github.com/ROCm/TheRock/actions/runs/26144859694</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26144992070" target="_blank"><circle cx="286.6" cy="444.5" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5138 (e44b42b)
+2026-05-20 06:14 UTC
+seconds_sum: 30,674 (8.52 h)
+Linux build jobs: 14
+status: completed / failure
+Bump rocm-libraries from a1834d2 to e3b6f33 (#5339)
+https://github.com/ROCm/TheRock/actions/runs/26144992070</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26145767743" target="_blank"><circle cx="288.2" cy="446.5" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5139 (ca3049e)
+2026-05-20 06:34 UTC
+seconds_sum: 30,358 (8.43 h)
+Linux build jobs: 14
+status: completed / failure
+Bump rocgdb to 7cc599ff77b3
+https://github.com/ROCm/TheRock/actions/runs/26145767743</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26161470289" target="_blank"><circle cx="314.3" cy="473.2" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5155 (c4189ff)
+2026-05-20 12:07 UTC
+seconds_sum: 25,993 (7.22 h)
+Linux build jobs: 14
+status: completed / failure
+Forward checkout inputs to Windows debug-tools stage (#5361)
+https://github.com/ROCm/TheRock/actions/runs/26161470289</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26170108090" target="_blank"><polygon points="326.7,518.2 332.7,524.2 326.7,530.2 320.7,524.2" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5165 (8f2ca6e)
+2026-05-20 14:44 UTC
+seconds_sum: 17,641 (4.90 h)
+Linux build jobs: 13
+status: completed / failure
+[compiler] Bump amd-llvm to ww15.1 with three cherry-picked fixes (#5…
+https://github.com/ROCm/TheRock/actions/runs/26170108090</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26172102504" target="_blank"><circle cx="329.4" cy="184.6" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5169 (ba44369)
+2026-05-20 15:19 UTC
+seconds_sum: 73,203 (20.33 h)
+Linux build jobs: 14
+status: completed / failure
+Re-enable WSL ROCDXG multi-arch CI (#5345)
+https://github.com/ROCm/TheRock/actions/runs/26172102504</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26175802408" target="_blank"><circle cx="334.7" cy="406.4" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5192 (bf2a9c0)
+2026-05-20 16:27 UTC
+seconds_sum: 36,918 (10.26 h)
+Linux build jobs: 14
+status: completed / failure
+Expand UTs by adding update_dependencies_test.py  (#4107)
+https://github.com/ROCm/TheRock/actions/runs/26175802408</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26182212824" target="_blank"><circle cx="344.6" cy="435.3" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5208 (e899619)
+2026-05-20 18:32 UTC
+seconds_sum: 32,185 (8.94 h)
+Linux build jobs: 14
+status: completed / failure
+[MIOpen] Use SYSTEM includes in pre_hook_MIOpen.cmake for third-party…
+https://github.com/ROCm/TheRock/actions/runs/26182212824</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26183913175" target="_blank"><circle cx="347.2" cy="450.2" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5211 (7666949)
+2026-05-20 19:05 UTC
+seconds_sum: 29,757 (8.27 h)
+Linux build jobs: 14
+status: completed / failure
+Revert /Z7 flags to reduce amd-llvm dev package size (#5372)
+https://github.com/ROCm/TheRock/actions/runs/26183913175</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26211780578" target="_blank"><polygon points="405.3,447.9 411.3,453.9 405.3,459.9 399.3,453.9" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5255 (608407f)
+2026-05-21 07:24 UTC
+seconds_sum: 29,150 (8.10 h)
+Linux build jobs: 14
+status: completed / failure
+Include rccl in device wheel artifact filter (#5376)
+https://github.com/ROCm/TheRock/actions/runs/26211780578</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26231193664" target="_blank"><circle cx="437.0" cy="449.7" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5271 (bb1c030)
+2026-05-21 14:07 UTC
+seconds_sum: 29,838 (8.29 h)
+Linux build jobs: 14
+status: completed / failure
+[rocprofiler-systems] Patch library files to set the correct RPATH (#…
+https://github.com/ROCm/TheRock/actions/runs/26231193664</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26238504343" target="_blank"><circle cx="447.2" cy="465.9" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5293 (3fac33e)
+2026-05-21 16:18 UTC
+seconds_sum: 27,186 (7.55 h)
+Linux build jobs: 14
+status: completed / failure
+Add test filter standardisation to rocrtst (#4812)
+https://github.com/ROCm/TheRock/actions/runs/26238504343</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26241938797" target="_blank"><circle cx="452.3" cy="460.1" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5306 (fca0b88)
+2026-05-21 17:23 UTC
+seconds_sum: 28,127 (7.81 h)
+Linux build jobs: 14
+status: completed / failure
+Add host-blas patch to remove hardcoded Zi and DEBUG flags from CMake…
+https://github.com/ROCm/TheRock/actions/runs/26241938797</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26242170980" target="_blank"><circle cx="452.7" cy="462.7" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5307 (62ce6e8)
+2026-05-21 17:28 UTC
+seconds_sum: 27,708 (7.70 h)
+Linux build jobs: 14
+status: completed / failure
+Fix WSL ROCDXG CI state and fork upload handling (#5378)
+https://github.com/ROCm/TheRock/actions/runs/26242170980</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26243492360" target="_blank"><polygon points="454.7,450.0 460.7,456.0 454.7,462.0 448.7,456.0" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5311 (bcd5574)
+2026-05-21 17:53 UTC
+seconds_sum: 28,794 (8.00 h)
+Linux build jobs: 14
+status: completed / failure
+[ci] Re-enable KPACK for ASAN (#5380)
+https://github.com/ROCm/TheRock/actions/runs/26243492360</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26250008888" target="_blank"><polygon points="464.9,450.4 470.9,456.4 464.9,462.4 458.9,456.4" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5316 (68171b1)
+2026-05-21 20:03 UTC
+seconds_sum: 28,729 (7.98 h)
+Linux build jobs: 14
+status: completed / failure
+Multi-Arch CI
+https://github.com/ROCm/TheRock/actions/runs/26250008888</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26250209937" target="_blank"><polygon points="465.2,448.0 471.2,454.0 465.2,460.0 459.2,454.0" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5317 (464a436)
+2026-05-21 20:06 UTC
+seconds_sum: 29,124 (8.09 h)
+Linux build jobs: 14
+status: completed / failure
+Fix multi-arch rocm sdist missing per-platform device extras (#5368)
+https://github.com/ROCm/TheRock/actions/runs/26250209937</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26260296418" target="_blank"><circle cx="483.6" cy="455.4" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5325 (2e9ba15)
+2026-05-22 00:01 UTC
+seconds_sum: 28,904 (8.03 h)
+Linux build jobs: 14
+status: completed / failure
+Revert &quot;[ci] Add resource spec file generation before running rocPrim…
+https://github.com/ROCm/TheRock/actions/runs/26260296418</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26265292143" target="_blank"><polygon points="496.1,455.5 502.1,461.5 496.1,467.5 490.1,461.5" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5331 (7e67db7)
+2026-05-22 02:40 UTC
+seconds_sum: 27,898 (7.75 h)
+Linux build jobs: 12
+status: completed / failure
+Disable iree / fusilli build (#5375)
+https://github.com/ROCm/TheRock/actions/runs/26265292143</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26275003776" target="_blank"><polygon points="519.6,452.5 525.6,458.5 519.6,464.5 513.6,458.5" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5337 (67345c3)
+2026-05-22 07:39 UTC
+seconds_sum: 28,396 (7.89 h)
+Linux build jobs: 12
+status: completed / failure
+Optimize artifact directory lookup with prefix-based indexing (#4786)
+https://github.com/ROCm/TheRock/actions/runs/26275003776</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26300643008" target="_blank"><circle cx="562.9" cy="476.4" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5345 (d912601)
+2026-05-22 16:50 UTC
+seconds_sum: 25,460 (7.07 h)
+Linux build jobs: 12
+status: completed / failure
+fetch_test_configurations: coerce container_options to string on non-…
+https://github.com/ROCm/TheRock/actions/runs/26300643008</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26301109870" target="_blank"><circle cx="563.7" cy="430.9" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5346 (db8e7a8)
+2026-05-22 17:00 UTC
+seconds_sum: 32,906 (9.14 h)
+Linux build jobs: 12
+status: completed / failure
+Bump rocm-systems from e682406 to cf23b64 (#5394)
+https://github.com/ROCm/TheRock/actions/runs/26301109870</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26301150995" target="_blank"><circle cx="563.8" cy="389.0" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5347 (602e40d)
+2026-05-22 17:01 UTC
+seconds_sum: 39,770 (11.05 h)
+Linux build jobs: 12
+status: completed / failure
+Bump rocm-libraries from e3b6f33 to 5bd2f90 (#5395)
+https://github.com/ROCm/TheRock/actions/runs/26301150995</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26305024550" target="_blank"><circle cx="570.5" cy="459.6" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5352 (08cf008)
+2026-05-22 18:27 UTC
+seconds_sum: 28,216 (7.84 h)
+Linux build jobs: 12
+status: completed / failure
+Add missing dependencies to amdrocm-profiler-base package (#5412)
+https://github.com/ROCm/TheRock/actions/runs/26305024550</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26335612340" target="_blank"><circle cx="666.2" cy="472.7" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5365 (459bf98)
+2026-05-23 14:44 UTC
+seconds_sum: 26,061 (7.24 h)
+Linux build jobs: 12
+status: completed / failure
+Bump rocm-systems from cf23b64 to 470c276 (#5416)
+https://github.com/ROCm/TheRock/actions/runs/26335612340</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26335826124" target="_blank"><circle cx="666.9" cy="455.9" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5366 (b7781ae)
+2026-05-23 14:53 UTC
+seconds_sum: 28,820 (8.01 h)
+Linux build jobs: 12
+status: completed / failure
+Bump rocm-libraries from 5bd2f90 to 807283e (#5417)
+https://github.com/ROCm/TheRock/actions/runs/26335826124</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26406494345" target="_blank"><polygon points="893.1,453.7 899.1,459.7 893.1,465.7 887.1,459.7" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5397 (158fa1e)
+2026-05-25 14:51 UTC
+seconds_sum: 28,200 (7.83 h)
+Linux build jobs: 12
+status: completed / failure
+[hipblaslt-provider]: Disable Clang Tidy and Clang Format in CMake fo…
+https://github.com/ROCm/TheRock/actions/runs/26406494345</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26410534913" target="_blank"><circle cx="901.3" cy="471.2" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5404 (84a3fe4)
+2026-05-25 16:36 UTC
+seconds_sum: 26,308 (7.31 h)
+Linux build jobs: 12
+status: completed / failure
+adding package and missing components for third party (#5239)
+https://github.com/ROCm/TheRock/actions/runs/26410534913</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26417947810" target="_blank"><circle cx="918.1" cy="473.0" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5416 (eabc4d3)
+2026-05-25 20:10 UTC
+seconds_sum: 26,021 (7.23 h)
+Linux build jobs: 12
+status: completed / failure
+[hipdnn] Package cross-provider integration test inputs in CI artifac…
+https://github.com/ROCm/TheRock/actions/runs/26417947810</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26418270338" target="_blank"><polygon points="918.9,454.3 924.9,460.3 918.9,466.3 912.9,460.3" fill="#c2410c" stroke="#c2410c" class="point"><title>AWS run 5417 (f6823a1)
+2026-05-25 20:20 UTC
+seconds_sum: 28,091 (7.80 h)
+Linux build jobs: 12
+status: completed / failure
+Bump rocm-systems from 470c276 to ed97534 (#5427)
+https://github.com/ROCm/TheRock/actions/runs/26418270338</title></polygon></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26459293626" target="_blank"><circle cx="1011.0" cy="466.2" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"><title>Azure run 5448 (b2082a7)
+2026-05-26 15:52 UTC
+seconds_sum: 27,137 (7.54 h)
+Linux build jobs: 12
+status: completed / failure
+Bump rocm-libraries from 807283e to 60e5be1 (#5437)
+https://github.com/ROCm/TheRock/actions/runs/26459293626</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26467183538" target="_blank"><circle cx="1023.1" cy="477.2" r="6.5" fill="#ffffff" stroke="#1d4ed8" class="point partial"><title>Azure run 5456 (3b16cb2)
+2026-05-26 18:26 UTC
+seconds_sum: 25,325 (7.03 h)
+Linux build jobs: 12
+status: in_progress / none
+Add GitHub API &#x27;resolve_git_ref&#x27; and &#x27;fetch_file_contents&#x27; helpers (#…
+https://github.com/ROCm/TheRock/actions/runs/26467183538</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26467919214" target="_blank"><circle cx="1024.2" cy="464.1" r="6.5" fill="#ffffff" stroke="#1d4ed8" class="point partial"><title>Azure run 5458 (769bcad)
+2026-05-26 18:41 UTC
+seconds_sum: 27,476 (7.63 h)
+Linux build jobs: 12
+status: in_progress / none
+Expose additional outputs in `build_tools/github_actions/determine_ve…
+https://github.com/ROCm/TheRock/actions/runs/26467919214</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26469314717" target="_blank"><circle cx="1026.4" cy="477.9" r="6.5" fill="#ffffff" stroke="#1d4ed8" class="point partial"><title>Azure run 5461 (0fea03e)
+2026-05-26 19:08 UTC
+seconds_sum: 25,213 (7.00 h)
+Linux build jobs: 12
+status: in_progress / none
+[ci] Improving memory monitor script with clearer CPU data (#5441)
+https://github.com/ROCm/TheRock/actions/runs/26469314717</title></circle></a>
+<a href="https://github.com/ROCm/TheRock/actions/runs/26475944442" target="_blank"><circle cx="1037.0" cy="614.1" r="6.5" fill="#ffffff" stroke="#1d4ed8" class="point partial"><title>Azure run 5468 (f6bd071)
+2026-05-26 21:22 UTC
+seconds_sum: 2,932 (0.81 h)
+Linux build jobs: 12
+status: in_progress / none
+[rocprofiler-systems] Build rocprofiler-systems examples as standalon…
+https://github.com/ROCm/TheRock/actions/runs/26475944442</title></circle></a>
+<text x="1088.0" y="90.0" class="label">Runner</text>
+<polygon points="1096.0,108.0 1102.0,114.0 1096.0,120.0 1090.0,114.0" fill="#c2410c" stroke="#c2410c" class="point"/>
+<text x="1114.0" y="118.0" class="legend">AWS (12/12 completed)</text>
+<line x1="1088" y1="137" x2="1108" y2="137" class="trend" stroke="#c2410c"/>
+<text x="1114.0" y="142.0" class="legend">AWS trend</text>
+<circle cx="1096" cy="168" r="5.7" fill="#1d4ed8" stroke="#1d4ed8" class="point"/>
+<text x="1114.0" y="172.0" class="legend">Azure (33/37 completed)</text>
+<line x1="1088" y1="191" x2="1108" y2="191" class="trend" stroke="#1d4ed8"/>
+<text x="1114.0" y="196.0" class="legend">Azure trend</text>
+<text x="1088.0" y="226.0" class="note">Hollow point = in progress</text>
+<text x="1088.0" y="246.0" class="note">Click points to open GitHub run</text>
+<text x="92.0" y="742.0" class="note">Plotted 49 Linux build-bearing runs (45 completed, 4 in progress) from 2026-05-18 17:51 UTC to 2026-05-26 21:22 UTC.</text>
+</svg>

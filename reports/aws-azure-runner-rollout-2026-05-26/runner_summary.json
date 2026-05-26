@@ -1,0 +1,59 @@
+{
+  "source_cache_dir": "D:\\scratch\\codex\\therock_runner_history_cache",
+  "ccache_cache_dir": "D:\\scratch\\codex\\therock_ccache_sample_cache",
+  "window_start_utc": "2026-05-18T17:51:31Z",
+  "window_end_utc": "2026-05-26T21:22:54Z",
+  "runner_counts": {
+    "azure-linux-scale-rocm": 37,
+    "aws-linux-scale-rocm-prod": 12,
+    "no-linux-build-jobs": 9
+  },
+  "linux_build_job_counts": {
+    "aws-linux-scale-rocm-prod": 147,
+    "azure-linux-scale-rocm": 492
+  },
+  "performance_all_completed": {
+    "aws-linux-scale-rocm-prod": {
+      "label": "AWS",
+      "n": 12,
+      "seconds_sum_mean_hours": 7.0553333333333335,
+      "seconds_sum_median_hours": 7.934,
+      "seconds_sum_min_hours": 0.06,
+      "seconds_sum_max_hours": 8.174,
+      "longest_job_mean_minutes": 95.125,
+      "longest_job_median_minutes": 103.57499999999999
+    },
+    "azure-linux-scale-rocm": {
+      "label": "Azure",
+      "n": 33,
+      "seconds_sum_mean_hours": 8.387272727272727,
+      "seconds_sum_median_hours": 7.857,
+      "seconds_sum_min_hours": 7.072,
+      "seconds_sum_max_hours": 20.334,
+      "longest_job_mean_minutes": 121.13757575757576,
+      "longest_job_median_minutes": 109.87
+    }
+  },
+  "performance_completed_ge_6h": {
+    "aws-linux-scale-rocm-prod": {
+      "label": "AWS",
+      "n": 10,
+      "seconds_sum_mean_hours": 7.9704,
+      "seconds_sum_median_hours": 7.989000000000001,
+      "seconds_sum_min_hours": 7.749,
+      "seconds_sum_max_hours": 8.174,
+      "longest_job_mean_minutes": 103.685,
+      "longest_job_median_minutes": 103.71
+    },
+    "azure-linux-scale-rocm": {
+      "label": "Azure",
+      "n": 33,
+      "seconds_sum_mean_hours": 8.387272727272727,
+      "seconds_sum_median_hours": 7.857,
+      "seconds_sum_min_hours": 7.072,
+      "seconds_sum_max_hours": 20.334,
+      "longest_job_mean_minutes": 121.13757575757576,
+      "longest_job_median_minutes": 109.87
+    }
+  }
+}
