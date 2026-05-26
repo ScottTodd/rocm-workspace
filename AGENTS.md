@@ -134,6 +134,25 @@ Default scratch directory: `D:/scratch/rocm-workspace`. Historical notes and
 old local artifacts may still use `D:/scratch/claude`; treat that path as a
 legacy scratch location, not as a Claude-only convention.
 
+### GitHub Actions Metadata And Logs
+
+When investigating GitHub Actions runs, prefer the authenticated GitHub CLI over
+anonymous `curl`:
+
+```bash
+gh auth status
+gh api repos/ROCm/TheRock/actions/runs/<RUN_ID>/jobs
+gh api \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  repos/ROCm/TheRock/actions/jobs/<JOB_ID>/logs
+```
+
+The workflow-job logs endpoint returns a redirect to a short-lived signed log
+URL. If anonymous `curl` receives a 403 for public workflow logs, do not assume
+the logs are unavailable or require admin rights; retry with authenticated
+`gh api` before falling back to indirect evidence such as job labels.
+
 ### Download CI Artifacts Without Extracting
 
 ```bash
