@@ -379,21 +379,8 @@ save them to a local scratch file so they can be shared later.
 
 ## Task Tracking
 
-This repository may move toward [Beads](https://github.com/gastownhall/beads)
-for task tracking.
-
-When Beads is available in the environment:
-
-- Run `bd prime` at the start of task-oriented work for workflow context.
-- Use `bd ready` to find unblocked work.
-- Use `bd show <id>` to inspect an issue.
-- Use `bd update <id> --claim` before taking ownership.
-- Use `bd close <id>` when work is complete.
-- Use `bd remember "insight"` for durable project memory.
-
-Do not initialize Beads, run `bd setup`, or migrate existing markdown tasks
-unless the user asks. Until Beads is initialized, `tasks/active/` and
-`tasks/completed/` remain legacy workspace context.
+Active tasks are tracked in `tasks/active/` and completed tasks can be moved to
+`tasks/completed/`. See `.claude/commands/task.md` for task setup instructions.
 
 ## Reference
 
