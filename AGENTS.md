@@ -290,8 +290,9 @@ Commit guidance:
   TheRock.
 - Do NOT include issue references such as `Fixes #123` unless the user asks.
 - Do NOT include PR references such as `#123`; PR metadata belongs in PR text.
-- Do NOT add tool-specific AI footers unless the user asks for them or the
-  repository policy requires them.
+- Add tool-specific AI footers when creating PR descriptions, review notes,
+  commit bodies, or other authored project text, unless the user asks not to
+  or the repository policy forbids them.
 - NEVER retry a failed signed commit with `--no-gpg-sign`; the user uses a
   hardware signing device.
 - NEVER push without explicit authorization.
