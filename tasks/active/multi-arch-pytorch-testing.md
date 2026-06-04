@@ -51,7 +51,12 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 - PR #5452: split reusable multi-arch PyTorch build workflows
   (`users/scotttodd/torch-reusable-pytorch-build-workflows`, merged)
 - PR #5503: PyTorch source manifest generation and checkout foundation
-  (`users/scotttodd/torch-manifest-generate-checkout`, draft)
+  (`users/scotttodd/torch-manifest-generate-checkout`, merged)
+- PR #5326: top-level release controls for PyTorch builds, including
+  `build_pytorch`, `pytorch_python_version`, and a PyTorch release matrix
+  generator to narrow dev release runs (under review)
+- PR #5633: manifest upload and reusable build-workflow plumbing
+  (`users/scotttodd/torch-manifest-build-workflow`, under review)
 
 ### Key files
 
@@ -417,27 +422,29 @@ Instead:
    manifest utilities, repo checkout support, focused unit tests, and manifest
    checkout/versioning docs.
 5. Manifest upload and Linux build workflow plumbing:
-   `prepare_pytorch_manifests.py`, `WorkflowOutputRoot.pytorch_manifest_dir()`,
-   and `.github/workflows/multi_arch_build_portable_linux_pytorch_wheels.yml`
-   plumbing for direct child workflow runs. The child workflow can pass through
-   an explicit `manifest_url` or generate/upload one manifest, then the build
-   job checks out source from that manifest. Keep release-orchestrator matrix
-   generation, `write_torch_versions.py --expected-manifest`, package-index
-   outputs, and test wiring out of this PR. Current branch:
-   `users/scotttodd/torch-manifest-build-workflow`.
-6. PyTorch test workflow wiring:
+   PR #5633, `users/scotttodd/torch-manifest-build-workflow` (under review).
+   Wires the reusable Linux and Windows PyTorch build workflows to pass through
+   an explicit `manifest_url` or generate/upload one manifest for direct child
+   workflow runs, then checks out source from that manifest. The manifest
+   checkout wrapper now forwards `--no-commit-hipify` and `--no-submodules` so
+   it preserves the behavior from PR #5526 and can later be reused by test
+   workflows. Release-orchestrator matrix generation, package-index outputs,
+   and test wiring are intentionally out of this PR.
+6. Top-level PyTorch release matrix controls:
+   Help get PR #5326 reviewed and merged. It adds `build_pytorch`,
+   `pytorch_python_version`, and the initial PyTorch matrix generator that can
+   narrow developer release runs to a single Python version.
+7. Linux multi-arch release orchestrator integration:
+   Build on the matrix generator from PR #5326. Update
+   `.github/workflows/multi_arch_release_linux_pytorch_wheels.yml` so a release
+   prepare job generates and uploads all manifests once, emits an explicit
+   matrix with one `manifest_url` per build cell, and passes that URL to each
+   child reusable build workflow call.
+8. PyTorch test workflow wiring:
    add `configure_pytorch_test_matrix.py`, connect successful build jobs to
    quick tests via `test_pytorch_wheels.yml`, and plumb manifest/package index
    outputs into test summaries. Track broader/full-test dispatch under #5496.
-7. Linux multi-arch release orchestrator integration:
-   `.github/workflows/multi_arch_release_linux_pytorch_wheels.yml` generates
-   all release manifests once, emits the explicit matrix, and calls the
-   standalone build/test workflow for each cell. Include manifest summary
-   improvements here: index link, individual manifest links, and generated
-   matrix display. Add `docs/development/github_actions_debugging.md` coverage
-   for direct build workflow runs and release-orchestrator runs. Planned after
-   the standalone workflow PR.
-8. Follow-up platform/test expansion:
+9. Follow-up platform/test expansion:
    Windows reusable build/orchestrator parity, full-test dispatch, and CI
    plumbing.
 
@@ -445,10 +452,14 @@ Instead:
 
 Current review stack:
 
-- `users/scotttodd/torch-manifest-build-workflow`: active branch on `main`.
-  Adds the minimal manifest prepare/upload helper and wires
-  `multi_arch_build_portable_linux_pytorch_wheels.yml` to generate or consume a
-  manifest URL before building. No release-orchestrator or test-workflow wiring.
+- `users/scotttodd/torch-manifest-build-workflow`: PR #5633, under review.
+  Wires the reusable Linux and Windows PyTorch build workflows to generate or
+  consume a manifest URL before building. No release-orchestrator or
+  test-workflow wiring.
+- Next release-orchestrator branch: reconstruct after PR #5326 lands so it can
+  build on that PR's PyTorch matrix generator. Scope: release job generates and
+  uploads all manifests once, then passes one manifest URL to each child build
+  job.
 - `users/scotttodd/torch-manifest-prepare-workflow`: stacked branch on
   `torch-manifest-generate-checkout` (`ba353030c`). Contains the deferred
   manifest prepare/upload/output layer plus a rough workflow/test-plumbing draft
@@ -553,12 +564,59 @@ Progress on 2026-05-29:
   outputs" experiment unless there is a stronger reason than the default-value
   issue. Keep this branch biased toward simplifying the workflow and script
   interface.
-- Current local TheRock worktree has partial experimental edits in
-  `multi_arch_build_portable_linux_pytorch_wheels.yml`,
-  `multi_arch_build_windows_pytorch_wheels.yml`,
-  `prepare_pytorch_manifests.py`, and
-  `prepare_pytorch_manifests_test.py`. Reconcile those edits before the next
-  push or workflow-dispatch test run.
+
+Progress on 2026-06-04:
+
+- Reworked `users/scotttodd/torch-manifest-build-workflow` around explicit
+  PyTorch refs and optional manifest URL pass-through. The reusable build
+  workflows now have no hidden/default PyTorch ref. If `manifest_url` is empty,
+  `pytorch_git_ref` must be provided and the workflow generates/uploads one
+  manifest. If `manifest_url` is provided, the generation job is skipped and
+  the build job consumes the provided URL.
+- Removed the thin `prepare_pytorch_manifest.py` wrapper and its tests. The
+  workflows now call `generate_pytorch_source_manifest.py --upload --output`
+  directly in the generation job. Using `--output` preserves the single-ref
+  validation without duplicating parsing logic in a second script.
+- Committed the simplification as:
+  - `4a0ec4f6e` `Require explicit PyTorch refs for build manifests`
+  - `4747d94dd` `Inline PyTorch manifest preparation in workflows`
+- Local validation after the simplification: focused manifest/workflow tests
+  passed (`50 passed, 1 skipped`) and pre-commit passed on touched workflow
+  files.
+- Workflow-dispatch validation runs:
+  - https://github.com/ROCm/TheRock/actions/runs/26975077760 generated a
+    `release/2.12` manifest; manifest checkout succeeded and the run moved on
+    to the PyTorch build step.
+  - https://github.com/ROCm/TheRock/actions/runs/26975635454 exercises
+    manifest URL pass-through from the previous run. It was still queued when
+    recorded.
+  - https://github.com/ROCm/TheRock/actions/runs/26978198370 exercises direct
+    generation from `nightly`. It was still queued when recorded.
+  - https://github.com/ROCm/TheRock/actions/runs/26978242094 exercises
+    pass-through from an existing `release/2.9` manifest. It was still queued
+    when recorded.
+
+Progress on 2026-06-04, PR #5633 review prep:
+
+- Opened PR #5633 for the manifest upload and reusable build-workflow plumbing:
+  https://github.com/ROCm/TheRock/pull/5633
+- Resolved the branch conflict with PR #5526 / commit
+  `e455359b88f1fb34133d08f9f359fa40cbe8f763` by keeping manifest-driven
+  checkout and adding `--no-commit-hipify` forwarding to the manifest checkout
+  wrapper. This preserves accurate `torch.version.git_version` metadata while
+  still using the manifest path.
+- Also added `--submodules` / `--no-submodules` forwarding to
+  `checkout_from_manifest.py` so future manifest-driven test jobs can skip
+  submodule checkouts in addition to skipping hipify.
+- Focused validation: `D:/projects/TheRock/.venv/Scripts/python.exe -m pytest
+  github_actions/tests/pytorch_checkout_from_manifest_test.py` passed
+  (`10 passed`).
+- Next sequencing:
+  1. Help review and merge PR #5326, which adds top-level PyTorch build
+     controls and the initial PyTorch matrix generator.
+  2. Build the next manifest branch on top of PR #5326. The release workflow
+     should generate/upload all manifests in one prepare job and pass the
+     matching manifest URL to each reusable build-workflow matrix cell.
 
 ## Deferred CI notes
 
