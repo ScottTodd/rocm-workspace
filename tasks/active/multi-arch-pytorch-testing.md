@@ -359,11 +359,23 @@ Instead:
    Add a regression test for the missing-pin case. Consider making malformed
    `related_commits` lines fatal as part of the same cleanup.
 11. [ ] Improve GitHub Actions job summaries for multi-arch PyTorch runs.
-   The manifest preparation summary should keep the manifest index link, add
-   links to individual manifest files, and show the generated build matrix
-   (`pytorch_git_ref` x `python_version`) with explicit manifest URLs. The
-   quick-test configuration job should not post a separate noisy summary when
-   the per-test jobs immediately below it already summarize what is being
+   Add a parent release summary, similar in spirit to
+   `configure_multi_arch_ci_summary.py`, that shows at a glance what the run
+   will build and test before users click through individual child jobs. It
+   should include the PyTorch refs and associated manifest URLs, the Python
+   versions requested by the release matrix, the GPU families/targets that will
+   be built, and the GPU families that will be tested with their runner labels.
+   To avoid one summary per `(pytorch_git_ref, python_version)` build cell,
+   consider lifting test matrix generation from the reusable build workflow up
+   into the release orchestrator. The reusable build workflow should still be
+   runnable directly by generating its own test matrix when no orchestrator
+   matrix is provided; when called by the release workflow, it could consume a
+   passed-through test matrix and keep its configure step log-only.
+   Keep the manifest preparation summary useful by retaining the manifest index
+   link, adding links to individual manifest files, and showing the generated
+   build matrix (`pytorch_git_ref` x `python_version`) with explicit manifest
+   URLs. Avoid a separate noisy quick-test configuration summary when the
+   parent release summary or per-test reports already summarize what is being
    tested. The PyTorch test report should include the build manifest link when
    `manifest_url` is provided.
 12. [ ] Add developer debugging docs for the new multi-arch PyTorch workflows.
@@ -617,6 +629,32 @@ Progress on 2026-06-04, PR #5633 review prep:
   2. Build the next manifest branch on top of PR #5326. The release workflow
      should generate/upload all manifests in one prepare job and pass the
      matching manifest URL to each reusable build-workflow matrix cell.
+
+Progress on 2026-06-05, reusable build/test workflow validation:
+
+- On `users/scotttodd/multi-arch-pytorch-build-tests`, added per-cell PyTorch
+  test triggering to both reusable multi-arch PyTorch build workflows using
+  `configure_pytorch_test_matrix.py` and `test_pytorch_wheels.yml`.
+- Simplified the test matrix contract so `configure_pytorch_test_matrix.py`
+  emits only `matrix`; an empty `{"include":[]}` matrix is the skip signal.
+  Removed the extra `enabled` workflow output and custom test-job `if`
+  condition.
+- Moved `test_amdgpu_families` next to `amdgpu_families` in workflow inputs,
+  trimmed the description, and let `configure_pytorch_tests` run without
+  waiting for the build job. This makes direct workflow-dispatch runs easier
+  to inspect while queued.
+- Triggered validation runs:
+  - Linux: https://github.com/ROCm/TheRock/actions/runs/27043715654
+    (`gfx94X-dcgpu;gfx950-dcgpu` build families, `test_amdgpu_families=auto`).
+  - Windows: https://github.com/ROCm/TheRock/actions/runs/27043753834
+    (`gfx1151` build family, `test_amdgpu_families=none`).
+- Observed that the configure job log output is useful for debugging matrix
+  behavior. Future summary work should lift the important decisions into the
+  release parent job summary so users can see refs/manifests, Python matrix
+  coverage, build GPU targets, and test runner labels without opening child
+  jobs. Example target context:
+  https://github.com/ROCm/rockrel/actions/workflows/multi_arch_release_linux_pytorch_wheels.yml
+  and run https://github.com/ROCm/rockrel/actions/runs/27004049747.
 
 ## Deferred CI notes
 
