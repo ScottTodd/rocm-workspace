@@ -636,9 +636,9 @@ Progress on 2026-06-05, reusable build/test workflow validation:
   test triggering to both reusable multi-arch PyTorch build workflows using
   `configure_pytorch_test_matrix.py` and `test_pytorch_wheels.yml`.
 - Simplified the test matrix contract so `configure_pytorch_test_matrix.py`
-  emits only `matrix`; an empty `{"include":[]}` matrix is the skip signal.
-  Removed the extra `enabled` workflow output and custom test-job `if`
-  condition.
+  emits the matrix plus a small `enabled` guard. GitHub rejects
+  `{"include":[]}` during strategy evaluation, so `enabled=false` is used to
+  skip the test job before matrix expansion.
 - Moved `test_amdgpu_families` next to `amdgpu_families` in workflow inputs,
   trimmed the description, and let `configure_pytorch_tests` run without
   waiting for the build job. This makes direct workflow-dispatch runs easier
@@ -648,6 +648,9 @@ Progress on 2026-06-05, reusable build/test workflow validation:
     (`gfx94X-dcgpu;gfx950-dcgpu` build families, `test_amdgpu_families=auto`).
   - Windows: https://github.com/ROCm/TheRock/actions/runs/27043753834
     (`gfx1151` build family, `test_amdgpu_families=none`).
+    This run showed that an unguarded empty matrix fails with
+    `matrix must define at least one vector`, so the workflow keeps an
+    explicit `enabled` output and job-level `if` condition.
 - Observed that the configure job log output is useful for debugging matrix
   behavior. Future summary work should lift the important decisions into the
   release parent job summary so users can see refs/manifests, Python matrix
