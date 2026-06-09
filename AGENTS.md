@@ -136,12 +136,36 @@ legacy scratch location, not as a Claude-only convention.
 
 ### GitHub Actions Metadata And Logs
 
-When investigating GitHub Actions runs, prefer the authenticated GitHub CLI over
-anonymous `curl`:
+When investigating GitHub Actions runs, use authenticated GitHub CLI REST calls
+directly. Public-read Actions metadata and log endpoints should work through
+`gh api` without additional repository permissions, and authenticated requests
+avoid the 60/hour anonymous REST limit:
 
 ```bash
-gh auth status
-gh api repos/ROCm/TheRock/actions/runs/<RUN_ID>/jobs
+gh auth status -h github.com
+gh api rate_limit --jq '.rate'
+
+# Workflow run history via the numeric workflow id.
+gh api repos/ROCm/TheRock/actions/workflows/210763103/runs \
+  -X GET \
+  -F per_page=100 \
+  -F status=completed
+
+# Job metadata for one run.
+gh api "repos/ROCm/TheRock/actions/runs/<RUN_ID>/jobs?per_page=100&page=1"
+
+# High-level run and job metadata. This path has worked reliably when scraping
+# job timing data because the CLI handles authentication internally.
+gh run list \
+  --repo ROCm/TheRock \
+  --workflow multi_arch_ci.yml \
+  --limit 100 \
+  --json databaseId,number,event,status,conclusion,headBranch,createdAt,updatedAt
+gh run view <RUN_ID> \
+  --repo ROCm/TheRock \
+  --json jobs \
+  --jq '.jobs'
+
 gh api \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2026-03-10" \
@@ -149,9 +173,30 @@ gh api \
 ```
 
 The workflow-job logs endpoint returns a redirect to a short-lived signed log
-URL. If anonymous `curl` receives a 403 for public workflow logs, do not assume
-the logs are unavailable or require admin rights; retry with authenticated
-`gh api` before falling back to indirect evidence such as job labels.
+URL. Start with authenticated `gh api` for this endpoint. If an anonymous client
+such as `curl` or `urllib` receives a 403 or rate-limit response for public
+workflow metadata/logs, treat that as an unauthenticated-client issue, not
+evidence that the logs are unavailable or require admin rights.
+
+For scripted GitHub Actions metadata scraping, make sure the requests are
+actually authenticated. Prefer shell or PowerShell loops that call `gh api`,
+`gh run list`, or `gh run view` directly. Known counterexamples from this
+workspace:
+
+- `curl`, `curl.exe`, Python `urllib`, and other raw HTTP clients are anonymous
+  unless an Authorization header is explicitly supplied. They can hit the
+  60/hour anonymous REST limit even for public-read Actions metadata.
+- Python subprocesses running `gh api` can see a different or invalid stored
+  token than the interactive shell, even when `gh auth status -h github.com`
+  succeeds interactively.
+- `gh auth token` may report `no oauth token found for github.com` even when
+  `gh auth status` shows an active keyring-backed PAT. Do not rely on it as the
+  first choice in this workspace.
+- Complex inline `--jq` expressions containing shell pipe characters and quoted
+  strings can be split incorrectly by the host shell or agent wrapper, producing
+  errors like `accepts at most 1 arg(s), received 2`. Prefer fetching a JSON
+  object or array with a simple `--jq` expression such as `.jobs`, then filter it
+  in PowerShell.
 
 ### Download CI Artifacts Without Extracting
 
