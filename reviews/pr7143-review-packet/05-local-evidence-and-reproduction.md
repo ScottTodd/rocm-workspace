@@ -313,6 +313,91 @@ An authoritative closure must also account for:
 - Supported Visual C++ redistributable requirements.
 - Driver/runtime compatibility.
 
+## Static-linking inspection
+
+The full Windows distribution contains:
+
+| File | Bytes | Role established by installed CMake metadata |
+|---|---:|---|
+| `lib/amdhip64.lib` | 166,948 | Import library |
+| `bin/amdhip64_7.dll` | 16,563,200 | Shared runtime implementation |
+| `lib/amd_comgr.lib` | 20,972 | Import library |
+| `bin/amd_comgr.dll` | 121,972,224 | Shared COMGR implementation |
+| `lib/rocm_kpack.lib` | 4,756 | Import library |
+| `bin/rocm_kpack.dll` | 181,248 | Shared kpack implementation |
+
+The installed target files say:
+
+```text
+lib/cmake/hip/hip-targets.cmake:
+  add_library(hip::amdhip64 SHARED IMPORTED)
+
+lib/cmake/hip/hip-targets-release.cmake:
+  IMPORTED_IMPLIB_RELEASE = <prefix>/lib/amdhip64.lib
+  IMPORTED_LOCATION_RELEASE = <prefix>/bin/amdhip64_7.dll
+```
+
+Archive inspection:
+
+```powershell
+& '<dist>\lib\llvm\bin\llvm-ar.exe' t '<dist>\lib\amdhip64.lib'
+```
+
+Observed:
+
+```text
+Exit code:       0
+Archive members: 720
+Unique name:     amdhip64_7.dll
+```
+
+This is the expected shape of a PE/COFF import library. It is not a static copy
+of the 16.56 MB runtime implementation.
+
+At local rocm-systems commit
+`90cbfbd55d944e16a6d9b1d6a0ed451f96831715`, CLR's
+`hipamd/src/CMakeLists.txt` does contain a `BUILD_SHARED_LIBS=OFF` branch that
+creates `amdhip64` as `STATIC`. The same static branch also has explicit
+transitive dependency setup. No such static HIP artifact or CMake target is
+present in the reviewed distribution. Source support for a build mode is not
+evidence that a released SDK supports downstream applications linking it,
+especially on Windows.
+
+## Ordinary HIP imports and pre-`main` loading
+
+To evaluate whether an existing HIP program could call `LoadLibraryExW` from
+`main()`, an installed HIP executable containing GPU code was inspected:
+
+```powershell
+& 'D:\tools\Dependencies_x64_Release\Dependencies.exe' `
+  -imports `
+  '<full-dist>\bin\copy.hip.exe'
+```
+
+Its ordinary import table names `amdhip64_7.dll` and includes:
+
+```text
+__hipPopCallConfiguration
+__hipPushCallConfiguration
+__hipRegisterFatBinary
+__hipRegisterFunction
+__hipUnregisterFatBinary
+hipLaunchKernel
+hipMalloc
+hipMemcpy
+hipFree
+```
+
+The file also contains `.hipFatB` and `.hip_fat` PE sections. These observations
+are consistent with compiler-generated embedded device code and registration.
+Most importantly for loader design, `amdhip64_7.dll` is an ordinary import, so
+Windows must select it during process initialization before `main()`.
+
+This does not rule out known-path loading. It rules out adding an ordinary
+`LoadLibraryExW` call to the beginning of the current program while leaving the
+normal import unchanged. A bootstrap process, correctly arranged delay load,
+or no-import explicit dispatch design is required.
+
 ## Reproducing with the generic probes
 
 Report the default resolution:

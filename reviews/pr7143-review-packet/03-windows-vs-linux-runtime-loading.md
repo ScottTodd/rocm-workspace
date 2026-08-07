@@ -14,7 +14,9 @@ equivalent to an ELF relative RUNPATH.
 | Relative packaged library directory | `$ORIGIN/../lib` in RUNPATH/RPATH | Usually place DLLs beside `.exe`, or use a launcher/package mechanism |
 | Central package-manager libraries | DEB/RPM dependencies and loader cache/default paths | MSI/package installation plus a loader/discovery contract |
 | App-local package | `bin/` plus private `lib/` | `.exe` plus DLL closure, commonly in the same directory |
+| Static runtime | Possible only for components that publish and support static archives and their closure | Current HIP SDK does not support static linking to its distributed components |
 | Configuration before normal imports | Embedded ELF metadata participates in loading | Application `main()` is too late; use app-local DLLs, launcher, or delay/explicit load |
+| Known central-runtime path | Wrapper plus `LD_LIBRARY_PATH`, direct loader invocation, or explicit `dlopen` architecture | Non-HIP bootstrap plus restricted search setup, or a purpose-built explicit loader ABI |
 | Environment-path precedence | `LD_LIBRARY_PATH` is normally before RUNPATH/cache/default paths | `PATH` is after System32 in the default safe order |
 | Transitive dependency caveat | `DT_RUNPATH` applies only to direct dependencies; children need their own paths | Dependencies are searched by basename unless appropriate `LoadLibraryExW` flags/package rules are used |
 
@@ -154,6 +156,13 @@ These models show that bundling shared objects is normal on Linux when
 portability or version isolation matters. Linux is also comfortable with
 central package-manager libraries, especially for open-source distro packages.
 
+Static archives are another Linux packaging option, but availability is
+component-specific. A HIP application or its own helper library can contain
+statically archived host/device objects while still linking dynamically to
+`libamdhip64.so`; that does not statically incorporate the HIP runtime. Fully
+static glibc-linked GPU applications also carry system-integration constraints
+and should not be inferred merely from the existence of `.a` files.
+
 ## Windows distribution models
 
 ### Application-local runtime
@@ -186,8 +195,26 @@ Potential complete mechanisms include:
 - Explicit `LoadLibraryExW` through a supported loader abstraction.
 - Windows package dependency graph or other package identity mechanism.
 
+For existing compiled HIP programs, the bootstrap is especially relevant:
+ordinary imports and compiler-generated fat-binary registration require the HIP
+runtime before `main()`. An application cannot simply discover the central SDK
+path at the top of its existing `main` and expect that discovery to affect those
+imports.
+
 Global `PATH` modification is neither deterministic nor sufficient against the
 legacy System32 collision.
+
+### Static runtime
+
+The reviewed Windows SDK does not expose a static `amdhip64` target. Its
+`amdhip64.lib` is the import library for `amdhip64_7.dll`, and the installed
+CMake target is `SHARED IMPORTED`. AMD's Windows deployment documentation also
+states that static linking to distributed HIP SDK components is unsupported.
+
+This differs from creating a static library *with hipcc*. HIP can archive an
+application's own host/device code, but the final program can still import the
+dynamic HIP runtime. “Our application library is static” and “the HIP runtime
+is statically linked into the executable” are separate claims.
 
 ## What should and should not be bundled
 

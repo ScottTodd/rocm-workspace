@@ -140,6 +140,73 @@ This design additionally demonstrates how a forked example can become a
 redistributable Windows application. It may reasonably be a follow-up if ROCm
 does not yet expose an authoritative redistribution closure.
 
+### Why static linking is not a third immediate fix
+
+Static linking would be a valid redistributable-application model in principle:
+the application would not need to locate `amdhip64_7.dll` at startup. It is not
+currently an option exposed by the reviewed Windows distribution:
+
+- `lib/amdhip64.lib` is an import library whose 720 archive members all name
+  `amdhip64_7.dll`; it is not the HIP runtime implementation.
+- The installed `hip::amdhip64` CMake target is declared `SHARED IMPORTED` and
+  maps that `.lib` to `bin/amdhip64_7.dll`.
+- AMD's current Windows application-deployment guidance states that static
+  linking to components distributed in the HIP SDK is unsupported.
+
+The upstream CLR source has a `BUILD_SHARED_LIBS=OFF` implementation path. That
+shows static runtime builds have been contemplated; it does not make the mode a
+supported Windows SDK artifact or downstream linking contract. Enabling it for
+TheRock would require runtime and transitive-dependency builds, package exports,
+licensing/notice review, feature and plugin validation, ABI/servicing policy,
+and CI coverage. That is potential ROCm-wide future work, not a bounded repair
+for this PR.
+
+### Approach 3: Application-owned known-path loader
+
+This is a valid longer-term central-runtime deployment model, but not a simple
+source-level edit to the current examples.
+
+The current compiled HIP program has ordinary PE imports on
+`amdhip64_7.dll`. Representative installed HIP executables also import
+compiler-generated APIs such as `__hipRegisterFatBinary` and
+`__hipRegisterFunction`. Windows resolves ordinary imports before `main()`, and
+the generated registration can be invoked by static initialization.
+
+There are four technically distinct ways to build a known-path model:
+
+1. **Bootstrap executable:** ship a small EXE with no HIP imports. It resolves a
+   selected runtime path relative to the application, from explicit
+   configuration, or through a supported ROCm discovery API; applies a
+   restricted DLL search policy; and starts the real HIP executable. This is
+   the most practical form for current compiled HIP applications.
+2. **Host EXE plus HIP implementation DLL:** a non-HIP host loads the selected
+   `amdhip64_7.dll` by absolute path, then loads an application DLL containing
+   the compiled HIP code. The application's imports reuse the already loaded
+   same-named runtime, and its static registration runs after that load. This
+   keeps one process and avoids manually wrapping the HIP API, at the cost of
+   splitting the application into a host and implementation module.
+3. **Delay-loaded runtime:** link `amdhip64_7.dll` with Windows delay-load
+   support and establish the directory before the first runtime reference.
+   Compiler-generated pre-`main` registration makes initialization order a
+   sharp edge. A custom delay-load hook could resolve the absolute path when
+   that registration first invokes the delay thunk, but it needs toolchain and
+   runtime validation.
+4. **Explicit loader/dispatch ABI:** do not import `amdhip64_7.dll`. Load an
+   absolute path with `LoadLibraryExW`, resolve a supported API table, and route
+   all HIP calls and registration through it. This avoids basename discovery
+   but requires a stable ROCm-provided abstraction; hand-writing
+   `GetProcAddress` wrappers in each example would be high-maintenance and easy
+   to get wrong.
+
+A compile-time absolute SDK path is not a redistributable solution. The known
+path must come from the installed application's own layout or from a supported,
+version-aware runtime selection mechanism.
+
+For PR #7143, the existing Python runner is already the bootstrap parent, so
+approach 1 collapses to the recommended scoped `SetDllDirectoryW` fix. Adding a
+second C++ launcher solely for this CI test would increase complexity without
+changing the test contract.
+
 ## CI evidence
 
 ### The reported failure is runner-group-specific

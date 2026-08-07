@@ -254,6 +254,80 @@ Approach 2 is the better end state for user-facing examples, but requiring it
 as the only acceptable immediate PR fix would pull unresolved ROCm-wide
 packaging policy into a small CI repair.
 
+### Static linking would be a third model only if ROCm supports it
+
+A truly static HIP runtime could make each example executable independent of
+`amdhip64_7.dll`. The current Windows distribution cannot demonstrate that
+model: it ships an import library plus the DLL and exports `hip::amdhip64` as a
+shared imported target. Current AMD deployment guidance also says static
+linking to HIP SDK components is unsupported.
+
+The example project should not attempt to reach into ROCm build trees and link
+unpublished object or static archives. If ROCm later ships a supported static
+target, static examples should be separate configurations with tests that:
+
+1. Confirm the executable has no `amdhip64_*.dll` import.
+2. Exercise runtime compilation, kpack, profiling, and other dynamic feature
+   paths relevant to the supported static profile.
+3. Document the remaining driver and operating-system runtime prerequisites.
+4. Include required licenses/notices and a rebuild-based servicing plan.
+5. Compare executable size and per-application duplication against the shared
+   application-local bundle.
+
+Static linking would trade loader simplicity for larger executables, duplicate
+runtime code across applications, and application-owned security updates. It
+should be offered as an intentional SDK product, not inferred from an upstream
+build switch.
+
+### Known-path loading is a distinct central-runtime model
+
+An application-owned loader could let forked examples select a versioned
+central ROCm runtime without copying it. The current example executable cannot
+perform that setup in `main()`: compiling HIP code gives it normal imports on
+the runtime, including generated fat-binary registration APIs.
+
+The teachable architecture would be:
+
+```text
+example-launcher.exe       no HIP imports
+  |
+  +-- discover and validate ROCm runtime root
+  +-- configure restricted runtime bin search
+  +-- launch example-real.exe
+        ordinary HIP imports resolve under selected policy
+```
+
+This can be redistributable if the launcher uses a documented runtime-discovery
+contract. It differs from application-local packaging: the runtime can be
+shared and serviced centrally, while the launcher owns activation and version
+selection.
+
+For the current test, Python already fills the launcher role. Replacing it with
+a C++ launcher would not make the inner executable directly runnable and would
+add another artifact to maintain. A reusable ROCm-provided launcher or loader
+could change that tradeoff; a one-off launcher in every example would be a poor
+project-wide pattern.
+
+A same-process variant can build the example body as a DLL:
+
+```text
+example-host.exe           no HIP imports
+  |
+  +-- LoadLibraryExW(<absolute-runtime>/amdhip64_7.dll)
+  +-- LoadLibraryExW(example-implementation.dll)
+  +-- GetProcAddress(example_main)
+```
+
+This is closer to “the application explicitly loads HIP” and allows generated
+HIP registration to occur when the implementation DLL is loaded. It avoids a
+manual HIP dispatch table, but every example would need a host/implementation
+split unless ROCm supplied a reusable host library or launcher pattern.
+
+A more ambitious in-process design would require the HIP toolchain to support
+delay loading or a loader/dispatch API that also owns generated device-code
+registration. That should be designed and tested by the HIP runtime/toolchain,
+not improvised in hipthreads examples.
+
 ## Proposed acceptance tests
 
 ### Harness-mode test
@@ -309,6 +383,7 @@ decisions.
 | ROCm runtime packaging | Define redistributable components, versions, dependencies, licensing, and supported loader mechanism |
 | Windows compatibility installer | Preserve explicitly scoped legacy System32 behavior during migration |
 | Downstream application | Choose central versus application-local deployment and service its owned runtime copies |
+| ROCm loader/bootstrap component, if created | Discover/version a central runtime and activate it before ordinary HIP imports or expose a stable explicit dispatch ABI |
 
 Keeping these responsibilities separate prevents a CI workaround from becoming
 an accidental downstream packaging contract.

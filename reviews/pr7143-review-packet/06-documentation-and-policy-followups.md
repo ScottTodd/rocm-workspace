@@ -199,6 +199,15 @@ following details would make its downstream contract more actionable:
    the kernel driver boundary.
 7. Update the public HIP Windows deployment documentation that still describes
    the legacy `System32` installation model when the transition is ready.
+8. Decide whether static HIP runtime linking will be a supported deployment
+   model. If so, define the complete static closure, exported targets, feature
+   limitations, licensing, and servicing contract; do not rely solely on the
+   CLR source's `BUILD_SHARED_LIBS=OFF` switch.
+9. Define a supported activation mechanism for applications that want to use a
+   centrally installed versioned runtime. Candidate implementations are a ROCm
+   bootstrap launcher, compiler-supported delay loading, or a stable explicit
+   loader/dispatch ABI. Registry discovery alone does not run early enough for
+   ordinary HIP imports.
 
 The compatibility shim in `System32` should be narrow enough that accidentally
 loading it remains safe and diagnostic. It should not recreate the old policy by
@@ -253,11 +262,35 @@ Insufficient for normal load-time imports: the loader resolves those before
 `main` begins. These APIs become architectural options only with an earlier
 launcher/bootstrap or with delay-loaded/explicitly loaded components.
 
+### Load HIP from a known path
+
+Viable when it is a complete architecture, not a lone API call. A non-HIP
+bootstrap can discover a versioned runtime and start the real executable under
+that search policy. A non-HIP host can instead load the runtime by absolute path
+and then load a HIP implementation DLL in the same process. A custom delay-load
+hook or future loader/dispatch ABI provides other in-process forms. Current HIP
+executables import compiler-generated
+registration APIs from `amdhip64_7.dll`, so inserting `LoadLibraryExW` at the
+top of their existing `main()` is too late.
+
+This model is promising for centrally serviced installations and should remain
+an explicit alternative to application-local copying. It needs ROCm-owned
+version discovery, dependency search semantics, security validation, and
+toolchain support to be broadly teachable.
+
 ### Static-link the entire runtime
 
-Not treated as an available general solution. It changes the ROCm distribution,
-licensing, servicing, and plugin model and is not the runtime contract established
-by the current packages.
+Potentially attractive for self-contained applications, but not an available
+solution from the reviewed Windows SDK. `amdhip64.lib` is the import library for
+`amdhip64_7.dll`, the installed CMake target is shared, and AMD's Windows
+deployment guidance says static linking to distributed HIP SDK components is
+unsupported.
+
+The upstream CLR build has a static branch, so this should be classified as a
+possible future product feature rather than technically unimaginable. Making it
+supported would change the SDK's dependency exports, licensing, binary-size,
+security-update, runtime compilation/plugin, and CI contracts. It is well beyond
+PR #7143 and must not be simulated by linking unpublished build-tree archives.
 
 ---
 

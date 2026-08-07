@@ -46,6 +46,25 @@ Two acceptable directions emerged:
    redistribution manifest or helper; neither a `bin/*.dll` glob nor PE-import
    scanning alone is a sufficient contract.
 
+A third deployment architecture is a known-path loader. The practical form for
+ordinary compiled HIP programs is an application-owned bootstrap executable
+that locates a selected ROCm runtime, configures a restricted DLL search path,
+and then starts the real HIP executable. A same-process variant can load the
+selected runtime by absolute path and then load a HIP application-implementation
+DLL. Calling `LoadLibraryExW` from the current example's `main()` is too late
+because its ordinary HIP imports,
+including compiler-generated fat-binary registration APIs, are resolved before
+`main`. A fully in-process design would require delay loading plus sufficiently
+early setup, or a ROCm-provided explicit loader/dispatch ABI.
+
+Static linking was also investigated as a possible redistributable-application
+model. It is not an available solution from the reviewed Windows SDK: the
+packaged `amdhip64.lib` is an import library for `amdhip64_7.dll`, the CMake
+target is exported as `SHARED`, and current AMD Windows deployment guidance says
+static linking to HIP SDK components is unsupported. It remains a possible
+future product capability if ROCm deliberately builds, packages, licenses, and
+supports a complete static runtime closure.
+
 ## File map
 
 - [01-pr-review.md](01-pr-review.md): Review findings, CI evidence, acceptable

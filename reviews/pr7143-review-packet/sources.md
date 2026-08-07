@@ -40,6 +40,20 @@ web references are 2026-08-06 unless a snapshot is embedded in the URL.
 - [HIP Windows installation documentation](https://rocm.docs.amd.com/projects/HIP/en/latest/install/install.html#windows)
   is relevant to the transition from the legacy deployed layout. It must be read
   together with the in-progress RFC while that transition is not complete.
+- [Windows HIP SDK application deployment guidelines](https://rocm.docs.amd.com/projects/install-on-windows/en/develop/conceptual/deployment-guidelines.html)
+  describe current ISV deployment expectations and explicitly state that static
+  linking to HIP SDK components is unsupported.
+- [CLR `amdhip64` target construction at the inspected rocm-systems commit](https://github.com/ROCm/rocm-systems/blob/90cbfbd55d944e16a6d9b1d6a0ed451f96831715/projects/clr/hipamd/src/CMakeLists.txt)
+  contains both the default shared target and the upstream
+  `BUILD_SHARED_LIBS=OFF` implementation branch. This is source capability, not
+  by itself a Windows SDK support commitment.
+- [CLR HIP packaging logic at the same commit](https://github.com/ROCm/rocm-systems/blob/90cbfbd55d944e16a6d9b1d6a0ed451f96831715/projects/clr/hipamd/packaging/CMakeLists.txt)
+  switches installed library kind for static builds and helps identify the work
+  that would be involved in producing a distinct static SDK configuration.
+- [HIP documentation: creating static libraries](https://rocm.docs.amd.com/projects/HIP/en/docs-6.1.5/how-to/programming_manual.html#creating-static-libraries)
+  concerns archiving application/library HIP code. Its examples still link the
+  final application to `amdhip64`; it should not be interpreted as proof that
+  the HIP runtime itself is statically linked.
 
 ## Microsoft Windows loader documentation
 
@@ -56,6 +70,12 @@ web references are 2026-08-06 unless a snapshot is embedded in the URL.
   establishes a restricted process search policy.
 - [`LoadLibraryExW`](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw)
   documents explicit load flags such as `LOAD_LIBRARY_SEARCH_*`.
+- [`GetProcAddress`](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress)
+  retrieves an exported function from an explicitly loaded module and is the
+  primitive behind a manual dispatch-table design.
+- [`GetModuleFileNameW`](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew)
+  lets a bootstrap locate its own executable and derive application-relative
+  paths without depending on the process working directory.
 - [Linker support for delay-loaded DLLs](https://learn.microsoft.com/en-us/cpp/build/reference/linker-support-for-delay-loaded-dlls)
   describes the design that permits application code to run before a selected
   import is loaded.

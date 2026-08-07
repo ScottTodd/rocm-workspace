@@ -158,6 +158,63 @@ all ROCm DLLs at runtime:
 - The application owns security updates and servicing of its private runtime.
 - The external ROCm SDK/install remains read-only.
 
+## Static linking
+
+Static linking can make a native application more self-contained by placing
+library implementation code into the executable at link time. If the entire
+HIP user-space runtime and its required static closure were supported this way,
+there would be no `amdhip64_7.dll` startup lookup for that application.
+
+That hypothetical should not be confused with linking `amdhip64.lib` on
+Windows. A `.lib` file can be either a static implementation archive or an
+import library describing symbols supplied by a DLL. In the supplied
+distribution:
+
+```text
+lib/amdhip64.lib          166,948 bytes
+bin/amdhip64_7.dll     16,563,200 bytes
+```
+
+The installed CMake package declares:
+
+```cmake
+add_library(hip::amdhip64 SHARED IMPORTED)
+set_target_properties(hip::amdhip64 PROPERTIES
+  IMPORTED_IMPLIB_RELEASE "${_IMPORT_PREFIX}/lib/amdhip64.lib"
+  IMPORTED_LOCATION_RELEASE "${_IMPORT_PREFIX}/bin/amdhip64_7.dll"
+)
+```
+
+`llvm-ar t amdhip64.lib` reports 720 import members, all named
+`amdhip64_7.dll`. The small `.lib` supplies link-time symbol stubs; application
+execution still requires the DLL.
+
+The CLR source contains a `BUILD_SHARED_LIBS=OFF` branch that creates a static
+`amdhip64` target. This is useful implementation evidence but not a supported
+SDK promise. The reviewed TheRock distribution uses the default shared build,
+does not ship that static archive, and AMD's current
+[Windows deployment guidance](https://rocm.docs.amd.com/projects/install-on-windows/en/develop/conceptual/deployment-guidelines.html)
+says static linking to HIP SDK components is unsupported.
+
+A supported static model would need substantially more than publishing a large
+archive:
+
+- A complete static dependency closure, including HSA/PAL, COMGR, kpack, LLVM
+  or compiler services used by runtime compilation, and supported OS/toolchain
+  libraries.
+- Clear behavior for components discovered at runtime, profiling/interposition,
+  plugins, kernel packages, and driver interfaces.
+- Consistent MSVC CRT and C++ runtime choices across application and ROCm code.
+- License/notice and redistribution terms for every incorporated component.
+- A security and servicing model: fixing a private static runtime generally
+  requires rebuilding and redistributing the application.
+- Exported CMake targets, documented compiler/link flags, and Windows CI for
+  downstream programs.
+
+Static linking could therefore be a worthwhile future deployment option, but
+it is not an implementable alternative for hipthreads examples consuming the
+current Windows tarball.
+
 ### The closure must be defined, not guessed
 
 Local PE inspection of the supplied `amdhip64_7.dll` found these direct
@@ -220,6 +277,138 @@ Important caveat: Microsoft documents that dependencies are otherwise searched
 by module name even when the top-level DLL was loaded by full path. Loading only
 `C:\...\amdhip64_7.dll` is not a complete isolation design unless its
 dependencies use the intended search locations too.
+
+### Why `LoadLibraryExW` in the existing `main()` is too late
+
+The current examples do not themselves call a loader API. Linking through
+`hip::host`/`amdhip64.lib` creates ordinary PE imports on `amdhip64_7.dll`, so
+the Windows loader selects it while creating the process.
+
+Inspection of a representative compiled HIP executable in the supplied
+distribution found ordinary imports including:
+
+```text
+__hipRegisterFatBinary
+__hipRegisterFunction
+__hipUnregisterFatBinary
+__hipPushCallConfiguration
+__hipPopCallConfiguration
+hipLaunchKernel
+```
+
+The registration functions are compiler/runtime plumbing for embedded device
+code and can be used by static initialization. Therefore this pattern cannot
+repair the existing executable:
+
+```cpp
+int main() {
+  LoadLibraryExW(known_amdhip64_path, ...);  // ordinary import was resolved earlier
+  // ... existing HIP program ...
+}
+```
+
+### Known-path designs that can work
+
+#### Bootstrap executable
+
+Ship a small launcher that has no HIP imports:
+
+```text
+MyApplication/
+  launcher.exe             # no HIP import
+  app/
+    my_hip_application.exe # ordinary HIP import
+```
+
+The launcher:
+
+1. Determines its own directory using `GetModuleFileNameW`, not `cwd`.
+2. Selects an allowed ROCm version from an application-relative location,
+   explicit configuration, or a supported central-runtime discovery API.
+3. Resolves and validates the runtime `bin` directory.
+4. Establishes a restricted DLL search policy or calls
+   `SetDllDirectoryW(runtime_bin)`.
+5. Creates the real process while that setting is active.
+
+This converts the test-runner technique into a distributable application-owned
+activation mechanism. The launcher should pass the selected runtime identity to
+the child and the child should record/verify the loaded runtime when useful.
+
+#### Host executable plus HIP implementation DLL
+
+A same-process bootstrap can load the runtime itself instead of creating a
+child:
+
+```text
+MyApplication/
+  host.exe                 # no HIP imports
+  app/
+    hip_application.dll    # compiled HIP code and exported app entry point
+```
+
+The host performs this sequence:
+
+1. Discover and validate the selected runtime directory.
+2. Call `LoadLibraryExW` on the absolute `amdhip64_7.dll` path with restricted
+   dependency-search flags.
+3. Load `hip_application.dll` by absolute path.
+4. Resolve an application-owned entry point such as `app_main` and call it.
+
+When Windows resolves `hip_application.dll`'s `amdhip64_7.dll` imports, its
+loaded-module check can reuse the runtime already loaded by the host. The HIP
+module's static constructors and fat-binary registration run as that application
+DLL is loaded, after the runtime is present.
+
+This is materially simpler than resolving every HIP API with `GetProcAddress`,
+but it changes the application shape and introduces a host-to-implementation
+ABI. It also needs a complete dependency-search policy: the absolute path for
+`amdhip64_7.dll` does not alone control later basename-only loads performed by
+the runtime.
+
+#### Delay-loaded HIP runtime
+
+The linker can mark `amdhip64_7.dll` as delay-loaded. Application startup then
+does not load it until a referenced symbol is first needed, allowing earlier
+code to configure the search path.
+
+For compiled HIP code, this requires explicit toolchain support because
+compiler-generated fat-binary registration may be the first reference and may
+run before `main()`. A custom delay-load notification hook can in principle
+resolve and return the absolute-path module when that first delay thunk runs,
+including during static initialization. A correct supported implementation
+needs the linker options, delay-helper linkage, hook lifetime/ABI, dependent-DLL
+policy, and compiler-generated registration paths validated together.
+Initialization ordering across ordinary translation units is not a suitable
+substitute for such a hook.
+
+#### Explicit loader and dispatch table
+
+An application can avoid a PE import on `amdhip64_7.dll` entirely, call
+`LoadLibraryExW` with an absolute path and restricted flags, and obtain API
+entry points with `GetProcAddress`. For HIP applications this also has to handle
+compiler-generated registration and every API used by dependent libraries.
+
+This is best exposed as a ROCm-owned stable loader/shim or API table. Requiring
+each downstream project to duplicate hundreds of function signatures, version
+negotiation, registration hooks, and error handling would create a new ABI and
+security problem in every application.
+
+### What “known path” should mean
+
+Do not embed the developer SDK path found by CMake into the executable. That
+path is machine-specific and commonly disappears after packaging. A
+redistributable known path should be one of:
+
+- Relative to an application-controlled installation root.
+- Selected from versioned central installations by a documented ROCm discovery
+  mechanism.
+- Supplied through explicit administrator/application configuration and then
+  canonicalized and validated.
+
+If the runtime has dependent DLLs in the same directory, use
+`LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR` for the explicit load and a defined process
+policy for later dynamic loads. Loading the top-level DLL by absolute path does
+not automatically make every future basename-only plugin load deterministic.
 
 Other APIs and patterns:
 
