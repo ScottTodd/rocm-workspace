@@ -4,6 +4,7 @@
 **Primary source scope:** `D:/projects/TheRock/rocm-systems/projects/{rocprofiler,rocprofiler-sdk,roctracer}`  
 **Packaging scope:** `D:/projects/TheRock` and its bundled Linux system-dependency mechanism  
 **Binary scope:** `D:/scratch/codex/therock-dist-linux-gfx950-dcgpu-10.1.0a20260813`  
+**Comparison binary scope:** `D:/scratch/codex/therock-dist-linux-gfx950-dcgpu-7.14.0`<br>
 **Input inventory:** `D:/scratch/codex/libatomic_users.txt`
 
 ## Executive summary
@@ -12,7 +13,9 @@ The `libatomic.so.1` runtime dependency can be removed from the inspected ROCm L
 
 The August 13 distribution has one active shipped-code cause: `lib/roctracer/libroctracer_tool.so` uses a 16-byte `std::atomic<WriteIndex>` in roctracer's `TraceBuffer`. On x86-64, the selected compiler configuration lowers that compound atomic's load, store, and compare-exchange operations to symbols supplied by `libatomic.so.1`. The corresponding `trace_buffer` test has the same dependency. A second test, `memory_pool`, records a direct dependency only because CMake links `atomic` explicitly; it has no undefined `libatomic` symbols.
 
-The rocprofiler-sdk family listed in `libatomic_users.txt` does **not** depend on `libatomic.so.1` in the inspected August 13 distribution. The inventory therefore describes a different artifact and is consistent with a source state or branch that predates the fix. Commit `83c6ceb242674551fba360d6d6c2fc2fb7ee2385` (2026-07-14) removed an SDK-wide `atomic` interface link and replaced the only large atomic object, an approximately 40-byte `std::atomic<ptrace_data_t>`, with ordinary data synchronized by existing release/acquire flag operations.
+The rocprofiler-sdk family listed in `libatomic_users.txt` does **not** depend on `libatomic.so.1` in the inspected August 13 distribution. Comparison with the stable 7.14.0 tarball confirms that the inventory describes the 7.14.0 runtime component set: its named SDK and roctracer outputs all have direct dependencies there, and its Python wildcard represents four packaged CPython variants. Commit `83c6ceb242674551fba360d6d6c2fc2fb7ee2385` (2026-07-14) removed an SDK-wide `atomic` interface link and replaced the only large atomic object, an approximately 40-byte `std::atomic<ptrace_data_t>`, with ordinary data synchronized by existing release/acquire flag operations.
+
+The release comparison shows substantial improvement: direct ELF dependencies on `libatomic.so.1` fell from 15 files in 7.14.0 to 3 files in the August artifact. Excluding packaged tests, the runtime closure fell from 13 files to 1. Of the 12 removed dependencies, one was the real large-atomic use in rocattach and eleven were SDK outputs that retained an otherwise-unused propagated link.
 
 The old `projects/rocprofiler` tree contains several explicit CMake links to `atomic` and a copy of the same compound `TraceBuffer` implementation. However, its active buffer instances were removed in 2024, and TheRock no longer builds that legacy project. These declarations appear stale and should be removed if the project remains buildable, but they do not explain the inspected distribution.
 
@@ -118,7 +121,54 @@ The following components named in `libatomic_users.txt` were checked through the
 - `librocprofv3-list-avail.so.1`
 - the packaged `libpyrocpd.cpython-*.so` Python extension variants
 
-The direct-readelf inventory can be valid evidence for another artifact, but it is not the dependency closure of the supplied distribution. The most likely explanation is an older source state or a branch that does not contain the July fix.
+The inventory is now confirmed to describe the stable 7.14.0 runtime component set, but it is not the dependency closure of the August distribution. The physical count differs from the number of inventory rows because `libpyrocpd.cpython-*.so` represents four packaged Python variants, while the inventory omits the two packaged roctracer test executables.
+
+### Release comparison: 7.14.0 versus 10.1.0a20260813
+
+The same regular-file SONAME scan and per-file `readelf` inspection were run on:
+
+- `D:/scratch/codex/therock-dist-linux-gfx950-dcgpu-7.14.0` — 27,555 materialized files;
+- `D:/scratch/codex/therock-dist-linux-gfx950-dcgpu-10.1.0a20260813` — 27,872 materialized files.
+
+As with the August audit, symbolic-link placeholders were not counted as separate ELFs; their real versioned targets were inspected. Neither distribution contains a bundled `libatomic` under `lib/rocm_sysdeps` or elsewhere in its materialized file tree.
+
+| Measure | Stable 7.14.0 | August 10.1.0a20260813 | Change |
+|---|---:|---:|---:|
+| All ELFs with direct `DT_NEEDED: libatomic.so.1` | 15 | 3 | -12 (-80%) |
+| Runtime ELFs, excluding `share/roctracer/test` | 13 | 1 | -12 (-92%) |
+| Packaged test ELFs | 2 | 2 | No change |
+| ELFs with actual undefined `LIBATOMIC_1.0` symbols | 3 | 2 | -1 |
+| Runtime ELFs with actual `LIBATOMIC_1.0` imports | 2 | 1 | -1 |
+| Direct dependencies with no `LIBATOMIC_1.0` imports | 12 | 1 | -11 |
+
+The component-level comparison is:
+
+| Component/file group | 7.14.0 | August artifact | Actual code use in 7.14.0 |
+|---|---|---|---|
+| `librocprofiler-sdk.so` | Direct dependency | Removed | None observed |
+| `librocprofiler-sdk-rocpd.so` | Direct dependency | Removed | None observed |
+| `librocprofiler-sdk-roctx.so` | Direct dependency | Removed | None observed |
+| `librocprofiler-sdk-attach.so` | Direct dependency | Removed | None observed |
+| `librocprofiler-sdk-rocattach.so` | Direct dependency | Removed | `__atomic_load` and `__atomic_store` |
+| `librocprofiler-sdk-tool.so` | Direct dependency | Removed | None observed |
+| `librocprofiler-sdk-tool-kokkosp.so` | Direct dependency | Removed | None observed |
+| `librocprofv3-list-avail.so` | Direct dependency | Removed | None observed |
+| Four `libpyrocpd.cpython-*.so` variants | Direct dependency | Removed | None observed |
+| `lib/roctracer/libroctracer_tool.so` | Direct dependency | Still present | 16-byte load/store/compare-exchange |
+| `share/roctracer/test/trace_buffer` | Direct dependency | Still present | 16-byte load/store/compare-exchange |
+| `share/roctracer/test/memory_pool` | Direct dependency | Still present | None observed |
+
+Only three 7.14.0 files contain unresolved symbols versioned to `LIBATOMIC_1.0`:
+
+- rocattach imports generic `__atomic_load` and `__atomic_store`, consistent with its approximately 40-byte `std::atomic<ptrace_data_t>`;
+- `libroctracer_tool.so` imports `__atomic_load_16`, `__atomic_store_16`, and generic `__atomic_compare_exchange`;
+- the roctracer `trace_buffer` test imports the same three operations.
+
+The other eleven SDK-family outputs inherited or retained the SDK's broad link interface without calling `libatomic`. The roctracer `memory_pool` test is the twelfth unused direct dependency.
+
+The August result matches the expected effect of commit `83c6ceb242`: it removes the one real SDK use and the propagated SDK-wide link, while leaving the unrelated roctracer implementation unchanged. Thus the situation improved materially after 7.14.0, but the host prerequisite cannot yet be removed because the remaining runtime `libroctracer_tool.so` still makes real calls into `libatomic.so.1`.
+
+For completeness, the `libquadmath.so.0` result did not change between these artifacts: both contain the same five direct users (`bbc`, `flang-23`, `tco`, `fir-opt`, and `fir-lsp-server`).
 
 ### `libquadmath.so.0`
 
@@ -236,11 +286,11 @@ Remove `atomic` from `target_link_libraries(memory_pool ...)`. Keep `std::atomic
 
 This is a low-risk build-only cleanup. The test should continue to compile and link without `-latomic`. It also demonstrates why searching source for `std::atomic` produces false positives: a source-level atomic does not imply a dynamic `libatomic` dependency.
 
-### Case 4: rocprofiler-sdk family — fixed dependency in an older inventory
+### Case 4: rocprofiler-sdk family — fixed dependency present in 7.14.0
 
 **Files and history inspected**
 
-- `D:/scratch/codex/libatomic_users.txt` lists the SDK core, rocpd, roctx, attach, rocattach, tool plugins, list tool, and Python bindings as direct users.
+- `D:/scratch/codex/libatomic_users.txt` lists the SDK core, rocpd, roctx, attach, rocattach, tool plugins, list tool, and Python bindings as direct users; comparison confirms these entries match 7.14.0.
 - Commit `83c6ceb242674551fba360d6d6c2fc2fb7ee2385`, “remove libatomic dependency from ROCm.”
 - `projects/rocprofiler-sdk/cmake/rocprofiler_config_interfaces.cmake:85-90`, where only an empty historical “atomic library” section remains.
 - `projects/rocprofiler-sdk/source/lib/rocprofiler-sdk-rocattach/ptrace_runner.cpp`, which now uses plain request/result data with release/acquire synchronization through atomic flags.
@@ -563,7 +613,7 @@ Once those checks pass in release artifacts, remove `libatomic1` from the public
 ## Other relevant observations
 
 1. **The authoritative answer is the packaged ELF closure.** Source searches find possible causes, but explicit links can be dropped by as-needed behavior and transitive interfaces can affect binaries whose own sources contain no atomics. The ROCm-wide survey found hundreds of ordinary atomics without a corresponding packaged `libatomic` dependency.
-2. **Record artifact provenance with dependency inventories.** `libatomic_users.txt` was useful, but without a build commit or artifact ID it appeared to contradict the newer tarball. Future reports should include the artifact URL/hash, build commit, target architecture, and exact inspection command.
+2. **Record artifact provenance with dependency inventories.** Comparison ultimately established that `libatomic_users.txt` matches the stable 7.14.0 component set, but the missing build commit or artifact ID initially made it appear to contradict the newer tarball. Future reports should include the artifact URL/hash, build commit, target architecture, and exact inspection command.
 3. **Check installed CMake exports as well as ELFs.** A package can be runtime-clean while still exporting `atomic` to downstream developers, recreating the host dependency when users link their own tools.
 4. **Generalize the closure test.** A small allowlist-based CI audit for non-ROCm SONAMEs would catch `libatomic`, `libquadmath`, and similar regressions earlier than installation documentation testing.
 5. **Separate runtime and test closure, but validate both.** Test artifacts may not be installed for end users, yet they reveal source/build problems and can break CI on minimal builders.
@@ -571,7 +621,9 @@ Once those checks pass in release artifacts, remove `libatomic1` from the public
 
 ## Conclusion
 
-For the inspected distribution, `libatomic1` is not a broad ROCm requirement. `std::atomic` is used throughout ROCm, but nearly all observed host uses are native-width scalars, enums, pointers, handles, or deliberately packed state. The runtime dependency is the consequence of one active 16-byte compound atomic in deprecated-but-shipped roctracer plus one test of that code, with a third test carrying a stale link.
+The dependency situation improved materially after stable 7.14.0: direct ELF dependencies fell from 15 to 3 overall and from 13 to 1 when packaged tests are excluded. The improvement removed both rocattach's real large-atomic use and eleven unused SDK-family links.
+
+For the August distribution, `libatomic1` is not a broad ROCm requirement. `std::atomic` is used throughout ROCm, but nearly all observed host uses are native-width scalars, enums, pointers, handles, or deliberately packed state. The remaining runtime dependency is the consequence of one active 16-byte compound atomic in deprecated-but-shipped roctracer plus one test of that code, with a third test carrying a stale link.
 
 Other ROCm projects already demonstrate the available remedies: CLR packs logically compound state into pointer-sized or 64-bit tagged values; rocprofiler-sdk publishes a larger ordinary payload through native atomic flags; and ROCR Runtime rejects types that are not always lock-free. For roctracer, the SDK-style split publication appears most applicable unless the buffer pointer can be replaced by a compact stable identifier.
 
