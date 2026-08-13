@@ -16,6 +16,8 @@ The rocprofiler-sdk family listed in `libatomic_users.txt` does **not** depend o
 
 The old `projects/rocprofiler` tree contains several explicit CMake links to `atomic` and a copy of the same compound `TraceBuffer` implementation. However, its active buffer instances were removed in 2024, and TheRock no longer builds that legacy project. These declarations appear stale and should be removed if the project remains buildable, but they do not explain the inspected distribution.
 
+`std::atomic` itself is widespread across ROCm, but wide host-side compound atomics are not. A broader survey found approximately 2,010 textual `std::atomic` occurrences in 757 files under `rocm-systems/projects` and `rocm-libraries/projects`, including vendored code and tests. After excluding obvious external, test, example, copied-Perfetto, hipthreads, and hip-tests paths, 826 occurrences remained in 347 files across 30 projects. Most are booleans, integers, pointers, callback pointers, enums, or one-word handle wrappers. The active roctracer `WriteIndex` is the only ROCm-owned packaged host case found that is clearly wider than one machine word and produces a `libatomic` dependency.
+
 Recommended resolution:
 
 1. Redesign roctracer's `TraceBuffer` to avoid a 16-byte atomic while preserving the concurrent reservation fast path.
@@ -328,6 +330,156 @@ Treat this as a separate compiler-toolchain audit:
 - A bundled compiler-runtime library needs license review, stable private SONAME treatment, compatible symbol versions, and testing across the oldest supported glibc and CPU baselines.
 - Omitting Flang tools reduces distribution functionality and should be an explicit packaging decision, not an incidental dependency fix.
 
+## ROCm-wide atomic usage survey
+
+The targeted rocprofiler investigation was extended across the local `rocm-systems/projects` and `rocm-libraries/projects` trees to determine whether roctracer's large compound atomic reflects a broader design pattern.
+
+### Prevalence
+
+The raw source scan found:
+
+| Source scope | Files containing `std::atomic` | Textual occurrences |
+|---|---:|---:|
+| `rocm-systems/projects` | 618 | 1,696 |
+| `rocm-libraries/projects` | 139 | 314 |
+| Combined | 757 | 2,010 |
+| `compiler` checkout, reported separately | 521 | 2,492 |
+
+The compiler count is mostly upstream LLVM/compiler code and was not used to characterize ROCm-owned runtime design.
+
+The raw systems/libraries count includes vendored libraries, generated or amalgamated sources, examples, and conformance tests. A heuristic reduced scan excluded paths containing `external`, `test`, `tests`, `examples`, `samples`, `docs`, `third_party`, `third-party`, and `rocrtst`, copied Perfetto sources, and the hipthreads and hip-tests projects. That left approximately 826 occurrences in 347 files across 30 projects. It is a source-prevalence measure, not an exact count of shipped declarations or built targets.
+
+The largest reduced file counts were:
+
+| Project | Files containing `std::atomic` |
+|---|---:|
+| rocprofiler-sdk | 61 |
+| legacy rocprofiler | 48 |
+| CLR | 46 |
+| rocprofiler-systems | 38 |
+| ROCR Runtime | 35 |
+| RCCL | 22 |
+| hipBLASLt | 18 |
+| hipDNN | 16 |
+| aqlprofile | 7 |
+| roctracer | 7 |
+
+Parsing direct `std::atomic<T>` spellings in the reduced set produced approximately 745 declarations or references. The overwhelming majority resolve to native-width categories:
+
+- booleans, integer counters, indices, and reference counts;
+- state and status enums;
+- data pointers and function/callback pointers;
+- one-word opaque handles and handle wrappers;
+- template parameters whose instantiated uses are native-width values.
+
+Custom-looking names are not necessarily compound. Examples include RCCL's `ncclIbResiliencyDevState`, ROCR's `HotswapBackend`, rocprofiler-sdk's serializer `Status`, and CLR's `AllocState`, all of which are enums. `ClientID` is an `int64_t`; `rocprofiler_callback_t` is a function pointer; HSA and rocprofiler IDs are generally one-word handles or wrappers.
+
+The CMake scan found explicit links to the compiler `atomic` library only in roctracer and legacy rocprofiler. The `Boost` component named `atomic` in rocprofiler-systems is Boost.Atomic, not GCC's `libatomic.so.1`.
+
+### Compound and compound-like cases
+
+#### rocPRIM: small compound state within a native word
+
+`projects/rocprim/rocprim/include/rocprim/device/detail/ordered_block_id.hpp:255-264` contains a literal compound atomic:
+
+```cpp
+struct data_t
+{
+    bool                valid  = false;
+    use_atomic_block_id option = use_atomic_block_id::hotfix;
+};
+
+static std::atomic<data_t> cache{data_t{}};
+```
+
+Under the current 64-bit ABI this `bool` plus enum representation fits in eight bytes and can use native machine-word atomic operations. This is the closest source example of `std::atomic<compound_type>` avoiding `libatomic` by keeping the representation within a supported width.
+
+The source asserts only that `data_t` is trivially copyable. For a strict no-`libatomic` policy, it would be safer to enforce both the size and lock-free assumptions:
+
+```cpp
+static_assert(sizeof(data_t) <= sizeof(uint64_t));
+static_assert(std::atomic<data_t>::is_always_lock_free);
+```
+
+The enum representation and therefore the exact structure layout are implementation-defined, so the assertion should be evaluated by every supported host toolchain.
+
+#### CLR concurrent queue: pointer and ABA tag packed into one word
+
+`projects/clr/rocclr/utils/concurrent.hpp:22-67` implements `TaggedPointerHelper`. It encodes an ABA counter in the low alignment bits of a node pointer and atomically manipulates the resulting pointer-sized value:
+
+```cpp
+std::atomic<typename Node::Ptr> head_;
+std::atomic<typename Node::Ptr> tail_;
+```
+
+This is a direct ROCm precedent for representing logically compound `{pointer, generation}` state as one native-width atomic. Nodes are over-aligned so the low tag bits are available.
+
+The tradeoffs are alignment and pointer-representation assumptions, plus a finite tag width: the tag eventually wraps. It mitigates the ABA problem but does not provide an unlimited generation counter.
+
+#### CLR hostcall: index and tag packed into `uint64_t`
+
+`projects/clr/rocclr/device/devhostcall.hpp:199-223` describes packet stacks using a 64-bit tagged value. Low bits identify an array entry and the remaining bits hold a tag incremented on stack operations:
+
+```cpp
+std::atomic<uint64_t> ready_stack_;
+```
+
+This is another strong precedent for reducing compound pointer-like state to a native integer representation. It also makes the shared host/device ABI explicit rather than relying on a C++ structure layout.
+
+#### rocprofiler-sdk rocattach: ordinary payload published by atomic flags
+
+The rocattach fix described in Case 4 is the clearest precedent for state that cannot fit into a native atomic. It retains the approximately 40-byte request/result payload as ordinary data and uses native-width atomic flags with release/acquire ordering to transfer ownership and visibility.
+
+This is conceptually similar to the proposed roctracer split: make only the publication/reservation token atomic, and use its successful transition to prove that the associated ordinary or separately atomic state is valid.
+
+#### rocprofiler-sdk `Synchronized<T>`: lock-backed compound state
+
+`projects/rocprofiler-sdk/source/lib/common/synchronized.hpp:41-163` provides a `std::shared_mutex`-backed wrapper for arbitrary compound data. It is used for maps, sets, optional threads, metadata, callback caches, and ptrace-runner structures.
+
+This avoids both `libatomic` and fragile lock-free protocols at the cost of lock acquisition. It is appropriate for control-plane state but may be too expensive for roctracer's per-event reservation path.
+
+#### ROCR Runtime: reject non-lock-free atomic widths at compile time
+
+`projects/rocr-runtime/runtime/hsa-runtime/core/util/atomic_helpers.h:274-278` checks every type used through its atomic helper:
+
+```cpp
+constexpr bool value = __atomic_always_lock_free(sizeof(T), 0);
+static_assert(value, "Atomic type may not be compatible with peripheral atomics.");
+```
+
+ROCR then uses compiler atomic builtins only for widths the configured target reports as always lock-free. This does not make an unsupported compound type lock-free, but it prevents an accidental compiler-runtime fallback. A similar compile-time assertion is useful wherever ROCm requires atomic operations not to introduce `libatomic`.
+
+The assertion is still not a complete package check: compiler lowering and link interfaces should also be verified in the resulting ELF.
+
+#### rocPRIM 128-bit GPU atomics: a separate device-side mechanism
+
+`projects/rocprim/rocprim/include/rocprim/intrinsics/atomic.hpp:165-325` implements 128-bit GPU-device atomic loads and stores using AMDGPU instructions such as `global_load_dwordx4`, `global_store_dwordx4`, `ds_read_b128`, and `ds_write_b128`. Unsupported SPIR-V and unknown targets are disabled or rejected at compile time.
+
+These operations do not use the host's `libatomic.so.1`. They demonstrate architecture-specific wide atomic support, but they are not a portable model for host C++ synchronization.
+
+### ABI-sensitive one-word wrappers
+
+Two cases merit attention even though they do not create `libatomic` imports in the inspected artifacts:
+
+- AMD SMI uses `std::atomic<std::chrono::steady_clock::time_point>` in `projects/amdsmi/src/amd_smi/amd_smi_gpu_device.cc:187`. Its current standard-library representation is one 64-bit duration value, but that representation is not a portable application-level ABI contract.
+- rocprofiler-register uses `std::atomic<std::thread::id>` in `source/lib/rocprofiler-register/details/checked_lock.hpp`. Its current representation is native-width, but its layout is standard-library-specific.
+
+For the strongest cross-toolchain guarantee, such state can be stored as an explicitly sized integer representation where semantics permit. This matters primarily when rebuilding ROCm with a different standard library or ABI; deploying the same already-built tarball to another Linux distribution does not change its atomic lowering.
+
+### Implications for the roctracer redesign
+
+The broader source survey gives three relevant ROCm precedents:
+
+1. **Pack logical state into one native word**, as CLR does for pointer/index plus generation tags.
+2. **Publish a larger payload through native atomic state**, as rocprofiler-sdk now does in rocattach.
+3. **Reject unsupported widths at compile time**, as ROCR Runtime does with `__atomic_always_lock_free`.
+
+Packing roctracer's current `{uint64_t index, Entry* buffer}` into a single 64-bit word is not straightforward because both members consume a full word. It would require replacing the pointer with a small stable buffer identifier, deriving the buffer from an index/generation, or sacrificing index range. The dynamic buffer list and buffer-lifetime rules make this more involved than CLR's tagged-pointer cases.
+
+Consequently, the rocattach-style split publication remains the most directly applicable design. A compile-time assertion on the replacement index and pointer atomics, plus the distribution-level ELF scan, should enforce the no-`libatomic` requirement.
+
+The binary result is consistent with the source survey: despite hundreds of `std::atomic` uses, the only packaged host objects observed importing 16-byte atomic helpers are `libroctracer_tool.so` and its matching `trace_buffer` test.
+
 ## Alternatives considered
 
 ### Statically link `libatomic`
@@ -410,7 +562,7 @@ Once those checks pass in release artifacts, remove `libatomic1` from the public
 
 ## Other relevant observations
 
-1. **The authoritative answer is the packaged ELF closure.** Source searches find possible causes, but explicit links can be dropped by as-needed behavior and transitive interfaces can affect binaries whose own sources contain no atomics.
+1. **The authoritative answer is the packaged ELF closure.** Source searches find possible causes, but explicit links can be dropped by as-needed behavior and transitive interfaces can affect binaries whose own sources contain no atomics. The ROCm-wide survey found hundreds of ordinary atomics without a corresponding packaged `libatomic` dependency.
 2. **Record artifact provenance with dependency inventories.** `libatomic_users.txt` was useful, but without a build commit or artifact ID it appeared to contradict the newer tarball. Future reports should include the artifact URL/hash, build commit, target architecture, and exact inspection command.
 3. **Check installed CMake exports as well as ELFs.** A package can be runtime-clean while still exporting `atomic` to downstream developers, recreating the host dependency when users link their own tools.
 4. **Generalize the closure test.** A small allowlist-based CI audit for non-ROCm SONAMEs would catch `libatomic`, `libquadmath`, and similar regressions earlier than installation documentation testing.
@@ -419,6 +571,8 @@ Once those checks pass in release artifacts, remove `libatomic1` from the public
 
 ## Conclusion
 
-For the inspected distribution, `libatomic1` is not a broad ROCm requirement. It is the consequence of one active 16-byte compound atomic in deprecated-but-shipped roctracer plus one test of that code, with a third test carrying a stale link. rocprofiler-sdk has already demonstrated the preferred remedy: express the synchronization protocol using ordinary data and native-width atomics, then remove broad CMake propagation.
+For the inspected distribution, `libatomic1` is not a broad ROCm requirement. `std::atomic` is used throughout ROCm, but nearly all observed host uses are native-width scalars, enums, pointers, handles, or deliberately packed state. The runtime dependency is the consequence of one active 16-byte compound atomic in deprecated-but-shipped roctracer plus one test of that code, with a third test carrying a stale link.
+
+Other ROCm projects already demonstrate the available remedies: CLR packs logically compound state into pointer-sized or 64-bit tagged values; rocprofiler-sdk publishes a larger ordinary payload through native atomic flags; and ROCR Runtime rejects types that are not always lock-free. For roctracer, the SDK-style split publication appears most applicable unless the buffer pointer can be replaced by a compact stable identifier.
 
 Completing the roctracer redesign and enforcing ELF closure in CI should allow ROCm to remove the `libatomic1` host prerequisite without adding `libatomic` to sysdeps. `libquadmath0` remains an independent task before the complete installation command can be deleted.
