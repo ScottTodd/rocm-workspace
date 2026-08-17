@@ -26,6 +26,13 @@ The existing TheRock bump and back-reference automation does record such a
 causal relationship, so eliminating that mapping loses the strongest evidence
 available.
 
+There is also a second, independent versioning boundary. The caller loads
+reusable workflow definitions from `ROCm/TheRock@main`, while those workflows
+can check out and execute `build_tools` scripts from the resolver-selected
+TheRock commit. A workflow and the script it invokes are one interface and must
+come from compatible revisions. Locking only the source checkout does not lock
+the CI control plane.
+
 ---
 
 ## Behavior Comparison
@@ -123,6 +130,23 @@ This gives the desired behavior in plain terms: a PR stays on the baseline
 recorded in its merge-base history; bump PR automation advances that baseline
 only after TheRock validates a synchronized stack; and all jobs within the run
 use the same SHA.
+
+The workflow definition and implementation must be versioned as a pair too:
+
+```mermaid
+flowchart LR
+    PIN["Recorded TheRock baseline T"] --> W["Reusable workflow literals<br/>ROCm/TheRock/...@T"]
+    PIN --> C["TheRock checkout ref T"]
+    C --> S["build_tools scripts from T"]
+    W --> CALL["Workflow/script interface from one commit"]
+    S --> CALL
+```
+
+GitHub does not allow an expression in `jobs.<job_id>.uses`, so a resolver job
+cannot dynamically turn `uses: ...@main` into `uses: ...@${{ needs.resolve... }}`.
+The literal reusable-workflow refs therefore need to be updated by the same
+bump/back-reference PR that records the source baseline, or the CI control
+plane must be deliberately separated behind a stable, versioned API.
 
 ---
 
@@ -314,6 +338,118 @@ ERROR: TheRock Tbad pins rocm-libraries Q2, which is not an ancestor of M.
 The current implementation would never notice this mismatch. The proposed
 design logs `Tbad`, `Q2`, and `M`, then stops before expensive build jobs start.
 
+### Case 8: Workflow and script refs can be individually valid but incompatible together
+
+TheRock history already contains a concrete atomic interface change on the
+`users/geomin12/granular-artifact-reuse` line at
+[`c2aebfa`](https://github.com/ROCm/TheRock/commit/c2aebfae4b00e79d763e9f736b39c28d1be9d48c):
+
+```text
+e9e1671:
+    workflow calls: configure_stage.py --projects=...
+    script accepts: --projects
+
+        |
+        | c2aebfa: rename --projects to --artifacts in both files
+        v
+
+c2aebfa:
+    workflow calls: configure_stage.py --artifacts=...
+    script accepts: --artifacts
+```
+
+Each commit is internally consistent. Splitting the workflow-definition ref
+`W` from the checked-out source/script ref `T` creates two failure modes:
+
+```text
+W = c2aebfa, T = e9e1671
+    new workflow + old script
+    => configure_stage.py: error: unrecognized arguments: --artifacts=...
+
+W = e9e1671, T = c2aebfa
+    old workflow + new script
+    => configure_stage.py: error: unrecognized arguments: --projects=...
+
+W = T = e9e1671, or W = T = c2aebfa
+    => interface is coherent
+```
+
+This is exactly the class of failure enabled by loading
+`multi_arch_build_portable_linux_artifacts.yml@main` but running
+`build_tools/configure_stage.py` from some independently selected older SHA.
+The fact that the rename was correctly atomic inside TheRock does not help if
+external CI tears that commit apart at runtime.
+
+### Case 9: Run 31760958655 computed one ref but executed another
+
+[Workflow run 31760958655](https://github.com/ROCm/rocm-libraries/actions/runs/31760958655)
+was a test run from rocm-libraries PR #10753. It is useful because the API and
+job logs expose every ref boundary:
+
+| Role | Ref selected or used | Evidence |
+|---|---|---|
+| Resolver base input | `dd6c7883` | `BASE_SHA` in resolver job |
+| Resolver head input | `0f18cb05` | `HEAD_SHA` in resolver job |
+| Computed rocm-libraries merge base `M` | `6b6e68ff` at 2026-08-13 17:14:37 UTC | GitHub compare API |
+| Only TheRock candidate requested | `afc869df` at 2026-08-13 16:04:50 UTC | `/commits?sha=main&until=...&per_page=1` |
+| Resolver output | `afc869df` | `therock_ref` job output |
+| Reusable workflow definition `W` | `87f64d4d` | Run API `referenced_workflows` for all called workflows |
+| TheRock checkout/script ref `T` | `87f64d4d` | setup output and downstream checkout logs |
+| External rocm-libraries overlay | merge ref `5df5e207` | build checkout log |
+
+If the same GitHub query is expanded to five results, the response begins:
+
+```text
+afc869df  2026-08-13 16:04:50 UTC  fix(ci): Add -Xarch_host flags...
+97a0346f  2026-08-13 15:29:49 UTC  Add hipfile to Linux library preload list
+47947a1b  2026-08-12 19:40:51 UTC  Quartz action update
+6113c9a6  2026-08-12 17:13:56 UTC  artifact inspection by ref/run
+c6170502  2026-08-12 16:09:19 UTC  regenerate consumer graph
+```
+
+The implementation does not fetch or evaluate that list: it sets
+`per_page=1`, accepts `afc869df`, and never reads any candidate's
+`rocm-libraries` gitlink. In code, its considered set for this run was therefore
+just `{afc869df}`.
+
+The control flow was:
+
+```mermaid
+flowchart LR
+    B["base dd6c7883"] --> M["merge base<br/>6b6e68ff"]
+    H["head 0f18cb05"] --> M
+    M --> Q["first TheRock main commit<br/>at/before cutoff"]
+    Q --> R["resolver output<br/>afc869df"]
+    R -. "not wired into setup in this test" .-> X["unused"]
+
+    U["uses ...@users/geomin12/<br/>better-dynamic-determination"] --> W["workflow definitions<br/>87f64d4d"]
+    F["setup ref: same feature branch"] --> T["TheRock checkout + scripts<br/>87f64d4d"]
+    W --> J["build jobs"]
+    T --> J
+    E["rocm-libraries merge ref<br/>5df5e207"] --> J
+```
+
+The recorded pin at `M` was TheRock `36efe519`, whose rocm-libraries gitlink
+was `f857d8e2` (214 commits behind `M`). The timestamp resolver instead returned
+`afc869df`, whose gitlinks were:
+
+```text
+rocm-libraries -> 67811f1e  (142 commits behind M)
+rocm-systems   -> 5bc651a8
+amd-llvm       -> a01cdbd9
+```
+
+The actually checked-out `87f64d4d` happened to contain those same three
+gitlinks, so this run did not change dependency pins between `afc869df` and
+`87f64d4d`. That compatibility was incidental; the two TheRock commits are on
+diverged histories, and only the latter's workflows and scripts executed.
+
+This means the run does **not** provide end-to-end evidence that the resolver's
+chosen SHA controls the build. It demonstrates that the algorithm returned
+`afc869df`, then the test wiring bypassed it. The four Linux math-libs jobs
+failed later because rocFFT could not find `fftw3.h`; they did not fail from a
+workflow/script argument mismatch.
+
 ### Resulting behavior matrix
 
 | Design | Uses a causal git relationship? | Stable for unchanged PR? | Detects divergence? | Main failure mode |
@@ -323,6 +459,10 @@ design logs `Tbad`, `Q2`, and `M`, then stops before expensive build jobs start.
 | Newest TheRock commit with compatible gitlink | Yes | No, if a later eligible bump lands | Yes | Baseline advances between reruns |
 | Pin recorded at merge base, no validation | Yes, by convention | Yes | No | Automation error is consumed silently |
 | Pin recorded at merge base + gitlink ancestry validation | Yes, enforced | Yes | Yes | Stale pin, handled by bump automation/SLA |
+
+The dependency-baseline matrix is necessary but not sufficient: whichever
+design supplies `T` must also ensure the reusable workflow definition `W` and
+the scripts executed from `T` satisfy a documented compatibility invariant.
 
 ---
 
@@ -380,6 +520,37 @@ gitlink. If a fully dynamic resolver is retained, it must inspect TheRock's
 submodule history and prove the selected gitlink is compatible with the merge
 base; it must not infer compatibility from timestamps.
 
+### BLOCKING: Reusable workflows and the scripts they execute are selected from different revisions
+
+The merged caller loads setup, Linux, and Windows reusable workflows from
+[`ROCm/TheRock@main`](https://github.com/ROCm/rocm-libraries/blob/a69d3716d5709093349679e13b6ffb8a850e824a/.github/workflows/therock-multi-arch-ci.yml#L145-L208),
+but passes the dynamically resolved TheRock SHA as the checkout `ref`. The
+called workflow definition can therefore be from revision `W` while
+`build_tools/configure_stage.py` and the rest of the source tree come from
+revision `T`.
+
+That pair is not guaranteed to be compatible. TheRock commit
+[`c2aebfa`](https://github.com/ROCm/TheRock/commit/c2aebfae4b00e79d763e9f736b39c28d1be9d48c)
+changed
+`multi_arch_build_portable_linux_artifacts.yml` from invoking
+`configure_stage.py --projects` to `--artifacts` in the same commit that changed
+the script's parser. Loading the workflow after that commit with a checkout
+before it produces an immediate unknown-argument error; reversing the refs
+produces the inverse error.
+
+This cannot be fixed by substituting the resolver output into `uses`: GitHub's
+[`jobs.<job_id>.uses` syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax-for-github-actions#jobsjob_iduses)
+requires a literal ref and does not allow contexts or expressions. The version
+decision must therefore exist before workflow expansion.
+
+**Required action:** Define and enforce a control-plane versioning contract.
+The preferred bump-derived design should atomically update literal reusable
+workflow refs and the recorded TheRock source baseline to the same immutable
+commit. An acceptable alternative is a separately pinned workflow/control-plane
+release whose scripts also come from that control-plane revision and whose API
+compatibility with source baseline `T` is tested and versioned. Do not load
+workflow code from live `main` and execute arbitrary CI scripts from `T`.
+
 ### BLOCKING: Falling back to live `main` violates the promised per-PR stability
 
 When no TheRock commit is returned by the timestamp query, the resolver
@@ -410,6 +581,14 @@ The step summary is useful after success, but it is not a live diagnostic and
 will not explain a failure before summary generation. There is no trace of the
 mode, discovered merge base, cutoff, candidates considered, submodule gitlink,
 ancestry result, or fallback decision.
+
+Run `31760958655` behaves the same way. Its resolver received base `dd6c7883`
+and head `0f18cb05`, then logged only the final output `afc869df`. Reconstructing
+merge base `6b6e68ff`, its timestamp cutoff, and the fact that the code requests
+only one candidate required separate API calls. The logs also did not reveal
+that setup ignored the output and selected `87f64d4d`; that was visible only by
+cross-referencing the caller YAML, run-level `referenced_workflows`, and
+downstream checkout logs.
 
 **Recommendation:** Log each decision input and invariant check as it happens.
 At minimum log the event/mode, source repository, base/head, merge base, selected
@@ -466,6 +645,23 @@ Define the policy in graph terms:
 The workflow should output all of `T`, `P`, and `M`, so downstream logs show the
 validated relationship rather than only the final TheRock SHA.
 
+### Keep the CI control plane coherent
+
+The baseline output alone cannot select a reusable workflow dynamically because
+GitHub expands `jobs.<job_id>.uses` before resolver job outputs exist. Choose one
+of these explicit models:
+
+1. **Preferred: one TheRock commit.** Bump automation writes immutable
+   `uses: ROCm/TheRock/...@T` literals and the source baseline `T` together.
+   Workflows and scripts are then exactly the pair tested in TheRock.
+2. **Versioned control plane.** Pin workflow definitions and every CI script
+   they invoke to an immutable control-plane release `C`; treat build source
+   `T` as data and maintain a tested `C`-to-`T` compatibility contract.
+
+The current `workflow@main + scripts@T` model is neither: `main` moves without
+the external repository's bump history, and the called workflows execute code
+from the independently selected source checkout.
+
 ---
 
 ## Validation Performed
@@ -474,6 +670,13 @@ validated relationship rather than only the final TheRock SHA.
   checks.
 - Inspected the pull-request demonstration run `29780090396`, including the
   `Resolve TheRock ref` job log.
+- Traced workflow run `31760958655` through its resolver inputs, merge base,
+  one-result TheRock query, run-level `referenced_workflows`, setup output, and
+  downstream source checkouts. The resolver returned `afc869df`, while the test
+  workflow actually used `87f64d4d` for both workflow definitions and scripts.
+- Inspected TheRock commit `c2aebfa`, which atomically renamed the
+  `configure_stage.py` workflow/script interface from `--projects` to
+  `--artifacts`, and verified both mixed-ref directions are incompatible.
 - Queried the gitlink stored by TheRock commit `7c274d3` and compared
   `1aa4641...5bd9db7` through GitHub's compare API (`5bd9db7` is 18 commits
   ahead).
@@ -489,9 +692,11 @@ validated relationship rather than only the final TheRock SHA.
 
 The answer to the central question is **no**: PR #9602 does not select TheRock
 by comparing TheRock's external-repository submodule pin with the PR merge
-base. It selects by committer time. Keep the single-SHA-per-run plumbing, but
-replace the selection policy with the bump-derived pin or another explicit
-git-history invariant before propagating it across ROCm repositories.
+base. It selects by committer time. It also does not make the reusable workflow
+definition and checked-out CI implementation one revision. Keep the useful
+single-SHA plumbing, but replace the selection policy with the bump-derived pin
+or another explicit git-history invariant and version the CI control plane
+coherently before propagating it across ROCm repositories.
 
 ---
 

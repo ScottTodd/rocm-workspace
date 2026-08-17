@@ -22,6 +22,13 @@ that existed beside the original implementation. The result is a second,
 currently untested implementation rather than a single shared and validated
 source of truth.
 
+The proposed common boundary also needs to version workflow definitions and CI
+scripts together. External callers currently load reusable workflows from a
+literal TheRock ref such as `@main`, then pass a separately resolved TheRock
+source ref into those workflows. Centralizing the resolver without defining
+this control-plane contract can combine workflow code from one commit with
+`build_tools` interfaces from another.
+
 ---
 
 ## Effect of Centralizing the Current Policy
@@ -166,6 +173,37 @@ non-monotonic commit dates, divergent history, dynamic-candidate drift, and
 fail-closed pin validation—see the `Explicit Git-History Examples` section in
 [`pr_rocm-libraries_9602_architecture.md`](pr_rocm-libraries_9602_architecture.md).
 
+### The common workflow and its implementation must be one compatible unit
+
+The intended integration has two independent TheRock refs:
+
+```mermaid
+flowchart LR
+    C["external caller workflow"] -->|"literal uses ref"| W["TheRock reusable workflow W"]
+    R["resolver output T"] -->|"checkout ref input"| S["TheRock source + build_tools at T"]
+    W --> I["workflow invokes script CLI"]
+    S --> I
+```
+
+`W` and `T` must be compatible, but the current contract does not require it.
+This is not theoretical. TheRock commit
+[`c2aebfa`](https://github.com/ROCm/TheRock/commit/c2aebfae4b00e79d763e9f736b39c28d1be9d48c)
+atomically renamed the
+portable Linux workflow's `configure_stage.py` argument from `--projects` to
+`--artifacts` and changed the script parser in the same commit:
+
+```text
+W before c2aebfa + script after c2aebfa => --projects is rejected
+W after  c2aebfa + script before c2aebfa => --artifacts is rejected
+W and script from the same side          => compatible
+```
+
+GitHub does not allow contexts or expressions in `jobs.<job_id>.uses`, so a
+resolver output cannot dynamically supply the called workflow's `@ref`. The
+common design must either update immutable workflow literals and source pins
+together through bump automation, or deliberately separate a pinned control
+plane whose scripts do not come from the independently selected source tree.
+
 ---
 
 ## Overall Assessment
@@ -202,6 +240,34 @@ should resolve or accept a bump-derived TheRock pin, inspect the matching
 external-repository gitlink in that TheRock commit, compare it with the caller's
 merge base, and fail if the declared relationship is not satisfied. See the
 design in [`pr_rocm-libraries_9602_architecture.md`](pr_rocm-libraries_9602_architecture.md).
+
+### BLOCKING: The shared contract does not keep reusable workflow code compatible with checked-out CI scripts
+
+The consumer pattern loads reusable workflow definitions with a literal ref
+(`@main` in the merged rocm-libraries workflow) while the new resolver returns a
+different SHA for source checkout. Downstream reusable workflows then invoke
+`build_tools` scripts from that checkout. The selected stack can therefore be
+internally valid at `T`, yet fail before building because workflow definition
+`W` expects a newer or older script interface.
+
+The real `--projects` to `--artifacts` transition at TheRock
+[`c2aebfa`](https://github.com/ROCm/TheRock/commit/c2aebfae4b00e79d763e9f736b39c28d1be9d48c)
+gives an
+exact failure reproducer for both directions. The repository correctly changed
+the workflow and script atomically; external CI defeats that atomicity when it
+loads `W` and `T` independently.
+
+[`jobs.<job_id>.uses`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax-for-github-actions#jobsjob_iduses)
+cannot use an expression, so this is not solvable by feeding the runtime
+resolver output into the `@ref` position.
+
+**Required action:** Add control-plane revisioning to the common CI contract.
+Prefer bump automation that updates every caller's immutable reusable-workflow
+SHA and recorded TheRock source SHA together. If workflow code is intentionally
+independent, pin a control-plane release `C`, execute its scripts from `C` (not
+from `T`), version the `C`/`T` API, and test supported combinations. Loading
+workflow code from live `main` while executing scripts from arbitrary `T` is not
+a supported compatibility model.
 
 ### BLOCKING: The shared critical path has no tests in this PR
 
@@ -256,7 +322,7 @@ base/head, merge base, each candidate and its external gitlink, ancestry result,
 selection/rejection reason, and final output. Emit warnings only for genuinely
 non-fatal conditions; failure to establish a validated baseline should raise.
 
-### IMPORTANT: The checked-out resolver implementation is itself floating
+### IMPORTANT: The resolver workflow itself introduces a third floating revision
 
 The reusable workflow
 [`checks out ROCm/TheRock without a ref`](https://github.com/ROCm/TheRock/blob/9ddceae6353a1c161284739f4836a218e5d77f05/.github/workflows/resolve_therock_ref.yml#L25-L30).
@@ -269,6 +335,11 @@ workflow definition was loaded, recreating a smaller form of within-run drift.
 revision as the reusable workflow, or package the resolver so the workflow and
 implementation are versioned together. The workflow's selected source-stack
 SHA and the revision of the resolver code should both be visible in logs.
+
+This is distinct from the downstream `W` versus `T` blocker above. Without a
+ref on this checkout, one run may involve three TheRock revisions: the resolver
+workflow definition, the resolver script fetched from default-branch HEAD, and
+the source stack returned by that script.
 
 ---
 
@@ -283,6 +354,7 @@ opaque SHA. Suggested outputs are:
 | `external-merge-base` | Caller repository merge base used for the decision |
 | `external-gitlink-ref` | Caller repository gitlink stored by `therock-ref` |
 | `selection-mode` | Recorded pin, validated override, or another explicit mode |
+| `workflow-ref` | Immutable TheRock revision supplying reusable workflows and their CI implementation |
 
 For the preferred recorded-pin design:
 
@@ -293,6 +365,11 @@ For the preferred recorded-pin design:
 4. Verify the gitlink is equal to or an ancestor of the caller merge base.
 5. Return and log all three SHAs; fail closed on any mismatch.
 
+`workflow-ref` is primarily evidence: a runtime output cannot populate the
+literal `jobs.<job_id>.uses` ref. Bump automation must write that literal before
+the run starts. Under the preferred one-commit model, `workflow-ref` and
+`therock-ref` are the same SHA.
+
 The existing bump automation can auto-approve/merge narrowly scoped
 back-reference PRs after those same checks. This retains stable PR baselines
 while removing routine human latency.
@@ -300,6 +377,19 @@ while removing routine human latency.
 ---
 
 ## CI Evidence
+
+- [rocm-libraries run 31760958655](https://github.com/ROCm/rocm-libraries/actions/runs/31760958655)
+  makes the ref split auditable. The timestamp resolver computed `afc869df`,
+  but the test caller hardcoded the feature branch
+  `users/geomin12/better-dynamic-determination` for setup. GitHub's run API
+  records all reusable workflows at `87f64d4d`, and downstream checkout logs
+  show scripts and source at `87f64d4d`. The computed `afc869df` was not used.
+- That run therefore does not validate the intended dynamic resolver-to-build
+  wiring. It happened to keep workflow and script refs aligned at `87f64d4d`
+  and failed later on rocFFT's missing `fftw3.h`, not on an interface mismatch.
+- The full merge-base, candidate, gitlink, and checkout ledger is documented in
+  the `Case 9` section of
+  [`pr_rocm-libraries_9602_architecture.md`](pr_rocm-libraries_9602_architecture.md).
 
 - `therock-pr-bot` is failing because the PR description lacks a required issue
   reference. The bot also warns that the new code has no unit test.
@@ -315,9 +405,12 @@ while removing routine human latency.
 
 1. Replace the timestamp policy with a documented gitlink/ancestry or recorded
    bump-pin policy and fail closed when it cannot be proven.
-2. Move/add the resolver tests in TheRock, including graph-validation and
+2. Define one immutable workflow/script control-plane revision and update it
+   atomically with the selected source baseline, or specify and test a stable
+   versioned interface between the two revisions.
+3. Move/add the resolver tests in TheRock, including graph-validation and
    reusable-workflow cases.
-3. Add an issue reference and end-to-end external-caller evidence.
+4. Add an issue reference and end-to-end external-caller evidence.
 
 ## Recommended Actions
 
@@ -333,8 +426,9 @@ while removing routine human latency.
 
 The location is right; the policy and packaging are not ready to become common
 infrastructure. Revise PR #7197 around the bump-derived graph relationship,
-bring the tests with the implementation, and make the decision evidence visible
-before any external repository adopts it.
+bring the tests with the implementation, keep reusable workflows compatible
+with the scripts they execute, and make every selected revision visible before
+any external repository adopts it.
 
 ---
 
