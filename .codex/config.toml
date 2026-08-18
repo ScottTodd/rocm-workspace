@@ -16,6 +16,8 @@ network_access = true
 # Keep these paths aligned with directory-map.md.
 writable_roots = [
   "D:/projects/TheRock",
+  "D:/projects/TheRock/rocm-libraries",
+  "D:/projects/TheRock/rocm-systems",
   "D:/projects/rockrel",
   "D:/scratch/codex",
 ]

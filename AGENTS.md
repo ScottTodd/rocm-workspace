@@ -112,20 +112,29 @@ before starting a long-running configure or build.
   `gfx90a`, `gfx110X`, `gfx120X`, and `gfx94X`.
 - Prefer targeted tests that validate the changed behavior before broader test
   runs.
+- When Codex runs pytest, always keep its cache outside source checkouts by
+  passing `--override-ini=cache_dir=<path-under-D:/scratch/codex/pytest-cache>`.
+  Use a project-specific cache directory and never create `.pytest_cache` in a
+  user checkout; sandbox-owned cache directories may be inaccessible to the
+  user's normal account.
 - For Python changes under `../TheRock/build_tools`, run pytest from the
   `build_tools` directory with TheRock's own venv Python. Do not rely on an
   activated venv, bare `python`, or bare `pytest`:
 
 ```bash
 cd /d/projects/TheRock/build_tools
-/d/projects/TheRock/.venv/Scripts/python.exe -m pytest tests/<target>_test.py
+/d/projects/TheRock/.venv/Scripts/python.exe -m pytest \
+  --override-ini=cache_dir=/d/scratch/codex/pytest-cache/TheRock-build-tools \
+  tests/<target>_test.py
 ```
 
 PowerShell equivalent:
 
 ```powershell
 cd D:\projects\TheRock\build_tools
-D:\projects\TheRock\.venv\Scripts\python.exe -m pytest tests\<target>_test.py
+D:\projects\TheRock\.venv\Scripts\python.exe -m pytest `
+  --override-ini=cache_dir=D:/scratch/codex/pytest-cache/TheRock-build-tools `
+  tests\<target>_test.py
 ```
 
 ## Playbook
@@ -186,12 +195,6 @@ workspace:
 - `curl`, `curl.exe`, Python `urllib`, and other raw HTTP clients are anonymous
   unless an Authorization header is explicitly supplied. They can hit the
   60/hour anonymous REST limit even for public-read Actions metadata.
-- Python subprocesses running `gh api` can see a different or invalid stored
-  token than the interactive shell, even when `gh auth status -h github.com`
-  succeeds interactively.
-- `gh auth token` may report `no oauth token found for github.com` even when
-  `gh auth status` shows an active keyring-backed PAT. Do not rely on it as the
-  first choice in this workspace.
 - Complex inline `--jq` expressions containing shell pipe characters and quoted
   strings can be split incorrectly by the host shell or agent wrapper, producing
   errors like `accepts at most 1 arg(s), received 2`. Prefer fetching a JSON
