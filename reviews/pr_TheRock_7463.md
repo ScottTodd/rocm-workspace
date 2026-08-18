@@ -97,11 +97,29 @@ policy; the latter changes with publishing state. Combining them makes ordinary
 release changes edit the ownership schema and creates another place that must be
 kept in lockstep with the product indexes.
 
+The restricted architecture set appears to follow the actual release matrix,
+not the somewhat stale readiness table in `SUPPORTED_GPUS.md`. Successful
+[`ROCm/rockrel` prerelease run 31840058334](https://github.com/ROCm/rockrel/actions/runs/31840058334)
+built Linux families `gfx101x`, `gfx103x`, `gfx110x`, `gfx120x`, `gfx1150-1153`,
+`gfx908`, `gfx90a`, `gfx94x`, `gfx950`, and `gfx125x`, with the corresponding
+Windows subset. That aligns with the manifest's RC/stable-enabled architecture
+families. The three targets limited to `dev` and `nightly`--`gfx900`, `gfx906`,
+and `gfx90c`--are precisely the ones absent from the prerelease run.
+
+This removes the apparent data inconsistency, but the relationship is not
+documented or enforced. A reader comparing only with `SUPPORTED_GPUS.md` would
+reach the wrong conclusion, while a future release-matrix change can silently
+leave the hand-maintained manifest stale.
+
 **Recommendation:** either split stable ownership from stream availability and
 derive/validate availability from the stream-specific product snapshots, or
 formally amend #6948 and document which system owns availability updates. This
 is a design decision worth the requester's direct attention; it will determine
-the long-term review and release burden of this file.
+the long-term review and release burden of this file. Document the authoritative
+release-matrix source for each exception and preferably generate or validate
+stream availability from the release workflow configuration. Do not use
+`SUPPORTED_GPUS.md` as the machine-readable source unless its purpose and
+freshness guarantees change.
 
 ### IMPORTANT: Define and test the actual CloudFront consumer format and size budget
 
@@ -152,6 +170,25 @@ unvalidated data for evidence-backed data.
 
 ## Smaller Coding, Test, and Documentation Details
 
+### IMPORTANT: Add durable user and maintainer documentation
+
+The 70-line module docstring is currently the only documentation for a new
+manifest schema, three output contracts, stream behavior, strict versus
+permissive validation, and the handoff to TheRock-Infra. This is too much
+operational policy to leave inside one implementation file, particularly when
+the documented `validate-content` example is already inconsistent with the CLI.
+
+**Recommendation:** add an aggregate-index section to
+[`docs/packaging/python_packaging.md`](https://github.com/ROCm/TheRock/blob/main/docs/packaging/python_packaging.md)
+and cross-link it from
+[`build_tools/third_party/s3_management/README.md`](https://github.com/ROCm/TheRock/blob/main/build_tools/third_party/s3_management/README.md).
+Cover the manifest ownership/availability contract, the source of stream
+exceptions, safe deployment invocation, diagnostic modes, artifact schemas,
+the TheRock-Infra boundary, and worked commands. Link both the historical
+[PEP 503](https://peps.python.org/pep-0503/) and the maintained
+[Simple Repository API specification](https://packaging.python.org/en/latest/specifications/simple-repository-api/)
+where the code relies on normalized project names and simple-index links.
+
 ### BLOCKING: Remove the framework-only unsupported-argument test
 
 [`test_main_rejects_unsupported_content_flag`](https://github.com/ROCm/TheRock/blob/051414a1e21986b1d137fc1b0eadf92f39dbe242/build_tools/packaging/python/tests/aggregate_index_test.py#L838-L880)
@@ -161,7 +198,17 @@ guidelines classify tests of framework behavior as blocking test sprawl.
 **Required action:** remove this test. Keep CLI tests where they exercise this
 tool's own validation, exit-code, or output contract. While editing the file,
 consider consolidating the repeated validate/generate/main cases so each layer
-adds distinct behavioral coverage.
+adds distinct behavioral coverage. In particular, the permissive/strict/missing
+package matrix is repeated through `validate_product_indexes`,
+`generate_outputs`, `main generate`, and `main validate-content`; keep the
+exhaustive matrix at the core behavior layer and only a happy path plus error
+translation at each CLI boundary. The malformed/unhashable YAML and three
+determinism groups have similar consolidation opportunities.
+
+Organizing the tests into classes or separate files for manifest parsing,
+content validation, rendering/output, and CLI behavior would communicate the
+coverage better than a large explanatory comment at the top. Add comments only
+where two cases look redundant but protect materially different invariants.
 
 ### IMPORTANT: The documented `validate-content` command cannot run
 
@@ -194,6 +241,43 @@ version 1 of these artifacts exists in the repository and no migration path is
 implemented. Unless an external v1 consumer already shipped, starting at 1
 makes the public contract easier to explain.
 
+### SUGGESTION: Consolidate packaging dependency declarations later
+
+`packaging==25.0` now appears in the root `requirements.txt`,
+`requirements-test.txt`, and
+[`build_tools/packaging/requirements.txt`](https://github.com/ROCm/TheRock/blob/main/build_tools/packaging/requirements.txt#L1-L5).
+The root declaration is not simply removable in this PR: general workflows
+install the root requirements, unit CI installs `requirements-test.txt`, and
+the release promotion/upload scripts document the packaging-specific file.
+However, three independently pinned copies can drift.
+
+Track a follow-up to establish one canonical pin with context-specific
+requirements including it, or give the aggregate-index tool a deliberately
+minimal dependency set that TheRock-Infra installs. This is cleanup rather than
+a reason to block the feature.
+
+### SUGGESTION: Document intent on the longer validation helpers
+
+Public functions have docstrings, but several substantial private helpers only
+expose mechanics. `_parse_python_index`, `_package_name_from_root_href`, and the
+strict-completeness branch in `validate_product_indexes` would benefit from
+short comments/docstrings explaining the invariant they protect and why the
+edge cases are rejected. Expand the existing `validate_product_indexes`
+docstring to describe `stream`, `strict_completeness`, and
+`require_all_manifest_packages`; those flags are the most consequential API in
+the module.
+
+### SUGGESTION: Prefer positive boolean names if explicit false forms are needed
+
+The Python style guide demonstrates `argparse.BooleanOptionalAction`, but using
+it directly for `--allow-unpublished` would create the awkward double-negative
+`--no-allow-unpublished`, whose behavior is identical to the current default.
+For a one-way safety override, `store_true` is defensible. If workflow callers
+need explicit true/false arguments, first rename the concept positively (for
+example `--require-all-manifest-packages` with an explicit negative form), or
+preferably remove permissive generation as recommended above. Do not apply
+`BooleanOptionalAction` mechanically to both safety flags.
+
 ### SUGGESTION: Clean up temporary files on write failure
 
 `_write_text_atomic()` uses `NamedTemporaryFile(delete=False)` and does not
@@ -212,6 +296,11 @@ orphaned `.tmp` file when possible.
   reports 97.19% statement coverage for `aggregate_index.py`.
 * Manual manifest-only generation for `nightly` produced 111 routes: route JSON
   18,241 bytes, aggregate HTML 7,928 bytes, validation JSON 30,553 bytes.
+* ROCm/rockrel prerelease run 31840058334 completed successfully for the
+  RC/stable architecture family set represented by the manifest, including
+  successful Linux and Windows Python-package build and publication jobs. This
+  supports the stream-availability choices, but does not validate the resulting
+  product-local index contents or ownership routes.
 * Multi-Arch CI was still in progress at review time. The already-completed
   compiler-runtime stages passed on Linux and Windows.
 
