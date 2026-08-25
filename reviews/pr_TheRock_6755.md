@@ -1,223 +1,215 @@
-# PR Review: ROCm/TheRock #6755
+# PR Re-review: ROCm/TheRock #6755
 
 * **PR:** [ROCm/TheRock#6755](https://github.com/ROCm/TheRock/pull/6755)
 * **Title:** `ci(bump-submodules): Post bump breadcrumbs to upstream superrepo PRs`
 * **Author:** `amd-hsivasun`
-* **Head:** `users/hsivasun/breadcrumbs-bump-prs` at `c6b72ef60f656e590829b1352ef738ed3db8eea9`
-* **Base:** `main` at `05e2e8b8943cb12c95594015c08846017b8bd54b`
-* **Reviewed:** 2026-07-27
-* **Commits:** 1
+* **Head:** `users/hsivasun/breadcrumbs-bump-prs` at `135d8d12e6f8f00d71bafe8a14ded1e5776c32d5`
+* **Base:** `main` at `ea8aec5ebb3b614bfb901f8439c64257733a1250`
+* **Reviewed:** 2026-08-25
+* **Commits:** 7
+* **Focus:** PR targeting and timing, test evidence, and generated-comment clarity
 
 ---
 
 ## Summary
 
-The breadcrumb feature is useful, and the single-comment/newest-first-history
-design avoids GitHub's fixed comment ordering. The implementation should not
-merge yet: it queries TheRock with a submodule commit SHA, so the first real
-API lookup fails before any breadcrumb is posted. The mock-heavy tests encode
-that defect instead of detecting it, and the PR has no push-path or sandbox
-repository validation.
+The current revision fixes the four functional blockers from the 2026-07-27
+review. It now resolves the TheRock PR from the TheRock push SHA, routes range
+queries through the explicit App-token client, gives reruns a stable event
+identity, and isolates the feature in `post_bump_breadcrumbs.py`. The author
+also supplied strong live evidence: real GitHub data for large land/revert
+ranges, real Actions runs, a real cross-repository comment, an idempotent
+rerun, a revert update, and an unmapped-commit summary.
 
-**Net changes:** +1015 / -3 lines across 3 files.
+One correctness issue remains. The visible event date and the promised
+newest-first ordering are derived from processing time and insertion order,
+not from the bump event. A delayed retry can therefore give an old bump the
+retry date and place it above a newer bump.
+
+**Net changes:** +820 / -5 lines across 4 files.
 
 ---
 
 ## Overall Assessment
 
-**CHANGES REQUESTED** - The live workflow path is broken, retries can corrupt
-the history, and critical API/token behavior is absent from the tests.
+**CHANGES REQUESTED** - Normal first-attempt land and revert processing now
+targets the right PRs with the right action, but delayed recovery can produce
+an incorrect timeline.
 
 ### Strengths
 
-- The motivation and intended user-visible behavior are clear.
-- A single sticky comment with explicit newest-first history is a reasonable
-  model for land/revert/re-land sequences.
-- The pure comment-body tests exercise meaningful output behavior.
-- Linux and Windows unit-test jobs, pre-commit, CodeQL, and the secret scan
-  passed.
+- TheRock and submodule SHA namespaces are now explicit and correctly routed.
+- The same App-token-bound client is passed through PR resolution, revert
+  detection, range fetching, comment lookup, and comment update calls.
+- Land, revert, fanout, unmapped-commit, and same-event rerun behavior have
+  direct tests and live GitHub evidence.
+- The generated upstream comment is short, readable, and links directly to the
+  TheRock bump PR.
+- The implementation is now in a focused script instead of extending the
+  existing bump-automation command with a non-event phase.
 
-### Blocking issues
+### Blocking issue
 
-1. TheRock PR resolution uses the submodule gitlink SHA instead of the TheRock
-   push SHA, causing the real API request to fail.
-2. The orchestration tests mock the implementation and assert the incorrect
-   SHA; no test or recorded experiment exercises the actual push/API path.
-3. Re-running a workflow unconditionally appends the same event again, so the
-   advertised history is not idempotent.
-4. Revert/range API calls bypass the explicit GitHub App client and rely on the
-   unauthenticated module singleton.
-
-### Important issue
-
-5. `post_breadcrumbs` is a push phase, not a GitHub event type, and its largely
-   independent implementation adds 292 lines to an existing 472-line script.
+1. Delayed or out-of-order retries misdate and misorder timeline entries.
 
 ---
 
-## Detailed Review
+## Detailed Finding
 
-### 1. BLOCKING: Resolve the bump PR from the TheRock push SHA
+### BLOCKING: Use the bump event time and sort history by that time
 
-[`detect_changed_submodule()`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/github_actions/bump_automation.py#L127-L140)
-returns `new_sha` as the new submodule gitlink target.
-[`process_bump()`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/github_actions/bump_automation.py#L279-L307)
-then passes that SHA to `resolve_therock_pr_number()`, which queries
-`ROCm/TheRock/commits/{sha}/pulls`. A submodule commit is not a commit in
-TheRock's object database.
+[`process_bump()`](https://github.com/ROCm/TheRock/blob/135d8d12e6f8f00d71bafe8a14ded1e5776c32d5/build_tools/github_actions/post_bump_breadcrumbs.py#L263-L304)
+sets `event_date` from `datetime.now(timezone.utc)` when the job attempt runs.
+[`build_breadcrumb_body()`](https://github.com/ROCm/TheRock/blob/135d8d12e6f8f00d71bafe8a14ded1e5776c32d5/build_tools/github_actions/post_bump_breadcrumbs.py#L180-L194)
+then unconditionally prepends that entry while labeling the list “Newest
+first.” Neither value is tied to the `therock_after_sha` that identifies the
+actual bump event.
 
-I verified this against a recent real bump:
+This fails in the recovery path the stable event key is intended to support:
 
-```text
-TheRock push SHA:
-  ROCm/TheRock/commits/82ca30cad815586a3338c54eac08e17378df3942/pulls
-  -> ROCm/TheRock#6871
+1. Bump A lands on August 18, but its breadcrumb step fails before posting.
+2. Bump B lands on August 19 and posts successfully.
+3. Bump A's workflow is rerun on August 20.
+4. The comment records A as August 20 and prepends it above B, even though A
+   landed first.
 
-Submodule target SHA used by this PR:
-  ROCm/TheRock/commits/44be71b52284948e58c93f65f46910399773fdcd/pulls
-  -> HTTP 422: No commit found for SHA
+I also reproduced the ordering directly against the current head: inserting
+an August 18 event after an existing August 19 event emitted August 18 first.
 
-The same submodule SHA in its actual repository:
-  ROCm/rocm-systems/commits/44be71b52284948e58c93f65f46910399773fdcd/pulls
-  -> ROCm/rocm-systems#8666
+The problem can also occur across midnight on an initial queued run. The
+current same-day live rerun proves duplicate suppression, but it cannot expose
+the wrong-date or out-of-order behavior. The unit test at
+[`test_new_entry_is_prepended_above_prior_history`](https://github.com/ROCm/TheRock/blob/135d8d12e6f8f00d71bafe8a14ded1e5776c32d5/build_tools/github_actions/tests/post_bump_breadcrumbs_test.py#L82-L110)
+only supplies chronologically increasing dates, so it encodes insertion order
+as chronology.
+
+**Required action:** Derive a stable event timestamp from the TheRock push
+commit (or pass the push event timestamp), retain a sortable timestamp in each
+history entry, and order entries by event time rather than attempt time. Add
+tests for a next-day retry and for processing an older failed event after a
+newer successful event.
+
+---
+
+## Behavior Review
+
+### Does it comment on the correct PR?
+
+**Yes for the tested normal and revert paths.** The workflow passes
+`github.event.before` and `github.sha` to the dedicated script. The script uses
+the TheRock `after` SHA only to resolve the TheRock bump PR, and separately
+derives old/new submodule SHAs for upstream range traversal. Each upstream
+commit is resolved in its own repository and the resulting PR numbers are
+deduplicated before posting.
+
+Evidence checked:
+
+- A real 145-commit `rocm-systems` land range mapped all 145 commits to 97
+  unique upstream PRs and linked TheRock #7408.
+- A real 169-commit revert range mapped all 169 commits to 142 unique upstream
+  PRs, swapped the traversal direction, and linked TheRock #4222.
+- The live write run posted to the disposable upstream PR
+  [rocm-systems#10296](https://github.com/ROCm/rocm-systems/pull/10296#issuecomment-5324051112)
+  and linked TheRock #6755.
+- An unmapped commit produced a summary on
+  [TheRock#6755](https://github.com/ROCm/TheRock/pull/6755#issuecomment-5324136431),
+  not on an unrelated upstream PR.
+
+### Does it post at the correct time?
+
+**Yes on the ordinary path, but not reliably on delayed recovery.** The
+production step is gated to a `push` to `main` that changes one of the watched
+gitlinks, so the first attempt runs after the bump reaches TheRock. The
+remaining blocker is that a later retry presents its execution time as the
+bump time and always inserts at the top.
+
+The step is still `continue-on-error: true`, so a transient failure does not
+block the bump workflow. The script now raises after attempting every changed
+submodule, making the failed step visible even though the job is allowed to
+continue.
+
+---
+
+## Test Review
+
+The feature has been tested much more thoroughly than in the earlier revision.
+
+### Verified evidence
+
+- I independently ran the current head's targeted suite with TheRock's venv:
+
+  ```text
+  D:/projects/TheRock/.venv/Scripts/python.exe -m pytest
+    --override-ini=cache_dir=D:/scratch/codex/pytest-cache/TheRock-pr-6755
+    github_actions/tests/post_bump_breadcrumbs_test.py
+    github_actions/tests/bump_automation_test.py -q
+
+  49 passed
+  ```
+
+- Current-head Unit Tests passed on both Ubuntu 24.04 and Windows 2022. The
+  Ubuntu job reported 64.12% statement coverage for the new script; the full
+  build-tools suite reported 1,837 passed, 50 skipped, and 122 subtests passed
+  in 70.33 seconds.
+- [Land/write run 32103278996](https://github.com/ROCm/TheRock/actions/runs/32103278996)
+  posted the real upstream comment.
+- [Rerun 32103534414](https://github.com/ROCm/TheRock/actions/runs/32103534414)
+  detected the same event key and left the comment unchanged.
+- [Revert/write run 32103812222](https://github.com/ROCm/TheRock/actions/runs/32103812222)
+  prepended a revert entry to the same comment.
+- [Unmapped run 32104050776](https://github.com/ROCm/TheRock/actions/runs/32104050776)
+  posted the summary to the TheRock PR.
+- Dry runs covered large real ranges plus `rocm-libraries` and `rocgdb` API
+  routing.
+
+### Remaining coverage limitation
+
+The live writes ran against an earlier test commit before the final comment
+heading and multi-submodule error/summary changes. Current-head unit CI covers
+those changes, but the live sequence was chronological and same-day. There is
+no test for a delayed first success or out-of-order recovery, which is why the
+remaining finding escaped both the mocks and the live exercise.
+
+The current Multi-Arch CI aggregate is red, but the failures inspected are in
+unrelated GPU/package tests: a rocprofiler-sdk timeout, missing hipBLASLt files
+in a Windows devel-wheel assertion, and a rocFFT test failure. The focused
+Ubuntu/Windows unit checks, pre-commit, CodeQL, and policy checks passed.
+
+---
+
+## Generated Comment Review
+
+The current code generates an upstream comment with this visible Markdown
+(the HTML event IDs are hidden by GitHub):
+
+```markdown
+### TheRock Submodule Bump Activity
+_Newest first_
+
+- **2026-08-20** — Reverted out of TheRock via [ROCm/TheRock#4222](https://github.com/ROCm/TheRock/pull/4222).
+- **2026-08-18** — Included in TheRock via [ROCm/TheRock#7408](https://github.com/ROCm/TheRock/pull/7408).
 ```
 
-`handle_post_breadcrumbs()` receives the correct TheRock `after` SHA but
-discards it when calling `process_bump()`. The resulting exception is hidden
-at job level by `continue-on-error: true`, so this can leave the workflow green
-without posting anything.
+This is understandable enough. It answers the useful questions quickly: what
+happened, when, and which TheRock PR caused it. Keeping one sticky comment also
+prevents repeated comments from cluttering the PR timeline, though each update
+can still generate notifications.
 
-**Required action:** Carry both namespaces explicitly. Pass the TheRock
-`after` SHA to `resolve_therock_pr_number()` and retain the old/new gitlink
-SHAs only for submodule range analysis. Add a test that fails if these SHAs are
-interchanged.
+The actual live comment linked above has the earlier heading “TheRock
+submodule-bump history (newest first)”; the final revision changed only the
+heading. The final heading has unit coverage and is clearer, but has not itself
+been shown in a real posted comment.
 
-### 2. BLOCKING: Replace call-sequence tests with production-boundary tests
-
-The purported end-to-end
-[`ProcessBumpTest`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/github_actions/tests/bump_automation_test.py#L847-L939)
-patches `GitHubAPI`, URL discovery, PR resolution, revert detection, commit
-fetching, per-commit resolution, comment lookup, and comment update. It
-therefore tests a handwritten call sequence, not the observable behavior of
-the feature. Most importantly, line 898 explicitly requires
-`resolve_therock_pr_number(changed["new_sha"], ...)`, locking in finding 1.
-
-The dispatch tests have the same issue:
-[`MainDispatchTest`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/github_actions/tests/bump_automation_test.py#L1137-L1170)
-mocks the handler and includes a test that only verifies `argparse` rejects
-missing required arguments. The small pure-output tests for timeline/comment
-formatting are useful and should remain; the problem is concentrated in the
-orchestration and CLI coverage.
-
-All discovered PR workflow runs use `pull_request` or
-`pull_request_target`. The new workflow step is gated to `push`, so none of
-those runs execute it. The description records only unit-test commands and no
-duration or sandbox/fork run. Passing unit tests therefore do not demonstrate
-token scope, commit-to-PR resolution, comment creation/update, or rerun
-behavior.
-
-**Required action:** Mock only the HTTP boundary (and external clock), while
-running real detection, SHA routing, range selection, comment construction,
-and request planning together. Use a temporary git repository with real
-gitlink changes or a small checked-in fixture. Remove tests of `argparse`
-itself and redundant call-sequence cases. Before merge, record a successful
-land/revert/re-land and rerun experiment against disposable repositories or a
-fork/test organization, including links or captured request/result evidence.
-
-### 3. BLOCKING: Make history updates idempotent
-
-[`build_breadcrumb_body()`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/github_actions/bump_automation.py#L235-L258)
-always prepends a new entry to the existing body. GitHub Actions jobs can be
-re-run for the same push, so the same TheRock PR/action is then recorded twice.
-A later rerun date can make one inclusion look like two distinct lifecycle
-events. This contradicts the PR's goal of preserving an accurate ordered
-history.
-
-**Required action:** Give each event a stable identity (for example TheRock
-push SHA plus action/submodule), store it in the comment, and replace or skip
-an existing matching entry. Test first run, same-day rerun, later-day rerun,
-and the intended land/revert/re-land sequence.
-
-### 4. BLOCKING: Route every API call through the App-token client
-
-`process_bump()` constructs an explicit `GitHubAPI(github_token=app_token)`,
-but the imported
-[`is_revert()` and `fetch_commits_in_range()` helpers](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/generate_manifest_diff_report.py#L335-L400)
-call the module-level `gha_send_request()` singleton. The
-[`Post bump breadcrumbs`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/.github/workflows/bump_submodules.yml#L90-L101)
-step passes App tokens only as command arguments; it does not export
-`GITHUB_TOKEN`. These range/revert reads therefore fall back to unauthenticated
-requests in Actions and are subject to the low anonymous rate limit.
-
-This directly contradicts the description's claim that one App-token client
-is reused for every call. Because the step is `continue-on-error`, rate-limit
-or API failures can again suppress the feature without failing the job.
-
-**Required action:** Extend the shared helpers to accept a `GitHubAPI` client
-and pass the same explicit App-token instance through every request. Add a
-boundary test that rejects any request made through the default singleton.
-
-### 5. IMPORTANT: Give breadcrumbs their own module and command
-
-[`--event_type`](https://github.com/ROCm/TheRock/blob/c6b72ef60f656e590829b1352ef738ed3db8eea9/build_tools/github_actions/bump_automation.py#L724-L757)
-previously selected actual workflow triggers, `schedule` and `push`.
-`post_breadcrumbs` is not a third trigger; it is a second phase of `push`.
-Modeling phases and triggers in the same enum obscures the command contract
-and makes unrelated token/argument requirements global.
-
-The change adds 292 source lines to a 472-line script and 708 test lines to its
-test file. Most breadcrumb logic has a separate lifecycle and only needs a
-small set of shared git/config helpers.
-
-**Recommendation:** Move the feature to a focused module and preferably a
-separate command such as `post_bump_breadcrumbs.py`. Extract the genuinely
-shared submodule detection/config helpers to a small common module if needed.
-The workflow can then invoke the breadcrumb command directly without diluting
-`--event_type` or running unrelated global git configuration.
+The unmapped summary is also understandable, but `1 commit(s)` is mechanical.
+Handling singular/plural would be a small optional polish.
 
 ---
 
-## PR Description and Test Evidence
+## Required Before Approval
 
-The description is much longer than needed and narrates individual helper
-calls and test implementation details already visible in the diff. Length
-alone is not the main problem: two prominent claims are inaccurate—the
-TheRock lookup does not receive `after_sha`, and not every request uses the
-explicit client.
-
-Condense it to the motivation, the single-comment history design, operational
-failure policy, and concrete validation. Move the longer design history to the
-linked issue. Add test duration and an actual sandbox/fork workflow result.
-
----
-
-## CI Evidence
-
-At head `c6b72ef...`:
-
-- Ubuntu and Windows unit-test jobs passed.
-- Pre-commit, CodeQL, Gitleaks, and the PR bot passed.
-- Multi-Arch CI failed in the Windows gfx110X `Driver / GPU sanity check`
-  before its test step. That appears unrelated to these Python/workflow files,
-  but the aggregate CI result is still failed.
-- No discovered run exercised the new `push`-gated breadcrumb step.
-
-The passing unit tests do not offset finding 1 because the relevant test mocks
-the API lookup and asserts the wrong SHA.
-
----
-
-## Required Before Re-review
-
-1. Preserve and use the TheRock push SHA for TheRock PR resolution.
-2. Replace orchestration call-sequence tests with boundary-level behavior
-   tests and record a real sandbox/fork run.
-3. Make history updates idempotent across workflow reruns.
-4. Pass the explicit App-token client through revert and commit-range helpers.
-5. Extract the feature from `bump_automation.py` or provide a compelling
-   module-boundary alternative.
-6. Correct and shorten the PR description, including test duration and live
-   validation evidence.
+1. Make event dates stable and tied to the TheRock bump, not the workflow
+   attempt.
+2. Sort history by event time and test delayed/out-of-order retries.
 
 ---
 
@@ -225,8 +217,9 @@ the API lookup and asserts the wrong SHA.
 
 **Approval Status: CHANGES REQUESTED**
 
-The comment-history design is salvageable, but the current workflow cannot
-reach it with real GitHub data. The fatal SHA mix-up is exactly the kind of
-defect the current mock-heavy suite cannot detect.
+The PR now demonstrates correct repository/PR routing and useful, readable
+comment output on the normal path. Fixing event-time ordering should be small,
+but it is necessary for the sticky timeline to remain truthful when the
+best-effort workflow is retried after a failure.
 
 *Review generated with Codex (OpenAI).*
