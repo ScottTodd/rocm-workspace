@@ -336,6 +336,18 @@ Commit guidance:
 - Prefer repo-scoped commit commands, for example
   `git -c safe.directory=D:/projects/TheRock -C D:/projects/TheRock ...` for
   TheRock.
+- In PowerShell, pass each commit-message paragraph as a separate `-m`
+  argument, for example:
+
+  ```powershell
+  git commit -m "Concise summary" `
+    -m "Explanatory body paragraph." `
+    -m "Generated with Codex"
+  ```
+
+  Never put literal `\n` sequences in a `-m` argument to represent line
+  breaks. PowerShell does not expand them, so Git stores the backslashes and
+  letters in the commit message.
 - Do NOT include issue references such as `Fixes #123` unless the user asks.
 - Do NOT include PR references such as `#123`; PR metadata belongs in PR text.
 - Add tool-specific AI footers when creating PR descriptions, review notes,
