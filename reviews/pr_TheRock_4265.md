@@ -11,7 +11,7 @@
 
 ## Summary
 
-This PR makes artifact archives and the `rocm-sdk-devel` wheel's secondary tarball deterministic by normalizing tar member timestamps and ownership and by sorting member insertion order. The artifact-archive portion is well contained: its primary reader (`ArtifactPopulator`) copies file bytes and executable bits rather than restoring tar mtimes. The devel-wheel portion has a more complex, order-sensitive extractor and exposes two unintended consequences.
+This PR makes artifact archives and the `rocm-sdk-devel` wheel's secondary tarball deterministic by normalizing tar member timestamps and ownership and by sorting member insertion order. The normalized metadata does not propagate uniformly through later packaging: release tarball and RPM staging replace the epoch mtimes, while the native DEB path preserves them for files that are not subsequently modified. The devel-wheel portion also has a more complex, order-sensitive extractor and exposes a separate data-loss regression.
 
 **Net changes:** +280/-10 across five Python files, including nine new tests.
 
@@ -19,7 +19,7 @@ This PR makes artifact archives and the `rocm-sdk-devel` wheel's secondary tarba
 
 ## Overall Assessment
 
-**❌ CHANGES REQUESTED** — the reproducibility objective is sound, but the new mixed file/directory ordering causes a reproducible data-loss regression when the devel wheel is expanded. Epoch mtimes also create an incremental-build hazard after devel-wheel upgrades that should be addressed or explicitly accepted before merge.
+**❌ CHANGES REQUESTED** — the reproducibility objective is sound, but the new mixed file/directory ordering causes a reproducible data-loss regression when the devel wheel is expanded. Epoch mtimes also create an incremental-build hazard after devel-wheel and native-DEB upgrades that should be addressed or explicitly accepted before merge.
 
 **Strengths:**
 
@@ -68,36 +68,50 @@ for root, dirnames, filenames in os.walk(source_dir):
 
 Add a regression that sends an empty directory plus a later-sorting sibling file through `add_tree()` and the devel expansion path, then verifies that the directory survives. The current exact-order unit test instead pins the unsafe mixed ordering.
 
-### ⚠️ IMPORTANT: Epoch mtimes can suppress downstream rebuilds after a devel-wheel upgrade
+### ❌ BLOCKING: Epoch mtimes can suppress downstream rebuilds after SDK upgrades
 
 [`normalize_tarinfo()` forces every member mtime to zero](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/_therock_utils/archive_util.py#L12-L27). The devel-wheel extractor calls `tarfile.extract()` for regular files and directories, which restores that value; the reproduction above confirms an installed file mtime of `0.0`.
 
 That matters because `rocm-sdk-devel` contains headers, libraries, and build metadata intended to be consumed by build systems. After upgrading the wheel in an existing environment, changed SDK inputs still appear older than already-built external objects and executables. Timestamp-based tools such as Ninja or Make can therefore skip recompilation or relinking unless users clean their build trees manually.
 
-This risk is narrower for normal artifact workflows:
+The same concern reaches at least one non-Python distribution path. The native-package workflow fetches artifacts without `--flatten`, so [`artifact_manager.py` uses `TarFile.extractall()` and restores the archive mtimes](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/artifact_manager.py#L428-L434). The DEB builder then stages those files with [`shutil.copytree()` and `shutil.copy2()`](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/packaging/linux/deb_package.py#L411-L451), whose [documented default behavior preserves file metadata including modification times](https://docs.python.org/3/library/shutil.html#shutil.copy2). As a result, untouched SDK inputs such as headers can remain dated January 1970 in the DEB payload. Files rewritten by RUNPATH conversion, stripping, or package generation will instead have later times, so the resulting package can contain a mixture of epoch and build-time mtimes.
+
+This is a correctness risk, not only cosmetic metadata: upgrading the native SDK package can leave a changed header older than an existing object file and suppress the rebuild that should consume it.
+
+#### Propagation through repackaging
+
+| Output | What its staging path does | Result of this PR's `mtime = 0` | Practical consequence |
+|---|---|---|---|
+| Generic artifact `.tar.zst` | Writes normalized `TarInfo` directly | Preserved | Artifact bytes and metadata become deterministic; raw preserving extraction produces epoch-dated files |
+| `rocm-sdk-devel` wheel | `tarfile.extract()` restores member metadata | Preserved | Changed installed SDK inputs can look older than downstream build outputs |
+| Release `.tar.gz` | Fetches with `--flatten`; `ArtifactPopulator` writes new files, then system `tar` archives that staging tree | Replaced by flatten/staging time | Incremental freshness is retained, but this PR does **not** make final release tarballs timestamp-reproducible |
+| Native DEB | Non-flattening `extractall()`, followed by metadata-preserving `copytree()`/`copy2()` | Preserved for untouched files; rewritten/generated files get later times | Native-package upgrades can have the same stale incremental-build hazard; payload timestamps may be internally inconsistent |
+| Native RPM | The spec copies sources into `%{buildroot}` with `cp -R`, without the [`-p`/`--preserve=timestamps` option](https://www.gnu.org/software/coreutils/manual/html_node/cp-invocation.html) | Replaced by RPM staging time | Incremental freshness is retained, but this PR does **not** make final RPM payload timestamps reproducible |
+
+DEB's `SOURCE_DATE_EPOCH` handling does not repair this: [`dpkg-buildpackage` derives the value from the newest changelog entry when it is unset](https://manpages.debian.org/bookworm/dpkg-dev/dpkg-buildpackage.1.en.html), and [`dpkg-deb` uses it to clamp tar-entry mtimes](https://manpages.debian.org/testing/dpkg/dpkg-deb.1.en.html), not to advance older ones, so an input mtime of zero remains zero. [RPM supports a `%build_mtime_policy`](https://rpm.org/docs/4.20.x/manual/buildprocess.html), but this repository does not set one in the generated spec or workflow. Ownership also follows different rules downstream: DEB's `--root-owner-group` and RPM's `%defattr(..., root, root, ...)` normalize package ownership independently, whereas release tarball flattening replaces the artifact owner with the staging user's ownership.
+
+Other consumers are less exposed:
 
 - `ArtifactPopulator` writes file contents itself and does not restore tar mtimes.
 - Bootstrap paths create fresh `.prebuilt` markers, which drive new stage stamps.
 - `install_rocm_from_artifacts.py` removes and recreates its output directory before extraction.
 
-It remains directly applicable to the new `py_packaging.py` call site.
-
-**Required action:** decide and test the installed-time semantics for the devel wheel. At minimum, document that an SDK wheel upgrade requires a clean downstream build; silently presenting changed inputs as January 1970 is a surprising behavioral change.
+**Required action:** decide and test installed-time semantics for every preserving consumer, especially the devel wheel and native DEB packages. At minimum, document that an SDK upgrade requires a clean downstream build; silently presenting changed inputs as January 1970 is a surprising behavioral change.
 
 #### Options and tradeoffs
 
-The artifact archives and the devel-wheel tarball do not necessarily need the same policy. Artifact readers generally copy into a clean tree or ignore archived mtimes, while the devel wheel installs build inputs into an environment that can outlive downstream build outputs.
+The artifact archives and their final distribution formats do not necessarily need the same policy. Some repackaging paths already replace archived mtimes accidentally, while the devel wheel and DEB path can preserve them into installed build inputs.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **1. Normalize archive mtimes everywhere, but set devel files to expansion time when installing** | Keeps CI and release archive bytes reproducible; identical archives retain identical hashes; an SDK upgrade makes installed headers and libraries newer than existing downstream outputs; cleanly separates distribution reproducibility from installed filesystem semantics | Installed trees are not timestamp-reproducible; reinstalling identical contents can trigger unnecessary downstream rebuilds; extraction must restore file and directory times carefully after all members are written |
-| **2. Store a deterministic, version-advancing timestamp such as `SOURCE_DATE_EPOCH`** | Archive and installed mtimes remain deterministic; later releases will usually look newer and trigger downstream rebuilds; follows a common reproducible-build convention | Requires an explicit timestamp source in every archive-producing path; commit or release timestamps are not guaranteed to be monotonic in every workflow; identical file trees built from different commits can receive different archive hashes, weakening the PR's “same content, same SHA” goal |
-| **3. Normalize artifact archives only; preserve real mtimes in the devel-wheel tarball** | Directly solves the generic-artifact collision prerequisite in issue #4202; preserves current devel-wheel installation behavior; smallest behavioral change | The devel wheel remains non-reproducible; rebuilding the same release can produce different wheel hashes; gives the two archive writers different policies and gives up part of this PR's expanded scope |
-| **4. Normalize only in CI; preserve real mtimes for release builds** | CI jobs that contend for an artifact key can produce stable hashes; non-CI release installs retain useful mtimes | “CI” and “release” overlap because releases are commonly built in CI; identical source produces different archives across environments; release artifacts remain non-reproducible; CI no longer validates the archive behavior shipped by the release path; an ambient environment check introduces hidden policy into a low-level utility |
-| **5. Keep epoch mtimes everywhere and require clean downstream builds after upgrades** | Simplest implementation; strongest byte-for-byte reproducibility; no additional policy or timestamp plumbing | Preserves the stale incremental-build risk; shifts cleanup cost to every devel-wheel user; easy to miss unless prominently documented; makes installed timestamps uninformative |
+| **1. Normalize artifact archives, but assign fresh mtimes when materializing installable SDKs** | Keeps generic artifact hashes reproducible; wheel and DEB upgrades make installed headers and libraries newer than existing downstream outputs; makes the tarball/RPM/DEB/wheel policy intentional instead of depending on each copy primitive | Installed trees are not timestamp-reproducible; reinstalling identical contents can trigger unnecessary rebuilds; all preserving paths must be covered, including DEB staging, not just wheel extraction |
+| **2. Store a deterministic, version-advancing timestamp such as `SOURCE_DATE_EPOCH`** | Archive and installed mtimes remain deterministic; later releases will usually look newer and trigger downstream rebuilds; follows a common reproducible-build convention; can be applied consistently to final tarballs, DEBs, RPMs, and wheels | Requires an explicit timestamp source in every archive-producing path; commit or release timestamps are not guaranteed to be monotonic in every workflow; identical file trees built from different commits can receive different archive hashes, weakening the PR's “same content, same SHA” goal |
+| **3. Normalize generic artifact archives only; downstream packagers explicitly choose their own mtimes** | Directly solves the artifact collision prerequisite in issue #4202; keeps the canonical build artifact deterministic while allowing release tarballs, native packages, and wheels to use install-appropriate semantics | Requires an explicit policy at every repackaging boundary; final formats are reproducible only if their chosen policy is deterministic; more plumbing than changing a single low-level helper |
+| **4. Normalize only in CI; preserve real mtimes for release builds** | CI jobs that contend for an artifact key can produce stable hashes; release installs retain useful mtimes if releases truly use a separate mode | “CI” and “release” overlap because releases and native packages are built in CI; identical source produces different archives across environments; CI no longer validates the archive behavior shipped by the release path; an ambient environment check introduces hidden policy into a low-level utility |
+| **5. Keep epoch mtimes everywhere they survive and require clean downstream builds after upgrades** | Simplest implementation; strongest reproducibility for formats that actually preserve the normalized metadata; no additional timestamp plumbing | Preserves the stale incremental-build risk for wheels and DEBs; does not make the current release tarball or RPM path reproducible because those paths replace mtimes; shifts cleanup cost to SDK users |
 | **6. Preserve real mtimes and make #4202 compare a canonical content hash instead of the compressed archive SHA** | Conflict detection can ignore metadata and compression differences directly; installed timestamps remain useful; can define exactly which attributes are semantically significant | Substantially more implementation and format complexity; archives themselves remain non-reproducible; requires producing, storing, and validating a second digest definition; broader than this prerequisite PR |
 
-Option 1 has the cleanest separation of concerns if both reproducible release wheels and safe incremental upgrades are requirements. Option 3 is the lowest-risk change if reproducibility is only needed for generic artifact collision detection. Option 4 is workable only if “CI” and “release” are explicit, mutually exclusive build modes; that is not true for the current GitHub Actions release model, so an environment-variable check alone would be fragile.
+Option 1 has the cleanest separation of concerns if reproducible generic artifacts and safe incremental upgrades are both requirements. Option 3 is the lowest-scope change if reproducibility is only needed for generic artifact collision detection. Option 4 is workable only if “CI” and “release” are explicit, mutually exclusive build modes; that is not true for the current GitHub Actions release model, so an environment-variable check alone would be fragile.
 
 ---
 
@@ -105,7 +119,7 @@ Option 1 has the cleanest separation of concerns if both reproducible release wh
 
 | Change | Observable effect | Assessment |
 |---|---|---|
-| `mtime = 0` | `tar -tvf` and preserving extractors show January 1970; wheel expansion installs epoch-dated SDK files | Undesirable for incremental upgrades; see finding above |
+| `mtime = 0` | `tar -tvf` and preserving extractors show January 1970; wheel expansion and untouched DEB inputs can install epoch-dated SDK files; release tarball and RPM staging replace the value | Undesirable for wheel/DEB incremental upgrades; inconsistent reproducibility across final formats |
 | `uid/gid = 0`, `uname/gname = root` | Root or `--same-owner` extraction produces root-owned files instead of CI-builder ownership | Usually desirable for distribution archives; non-root extraction remains owned by the extracting user |
 | Sorted artifact members | Archive hashes no longer depend on directory enumeration order | Desirable; manifest-first contract is preserved |
 | Mixed sorted files/directories in `add_tree()` | Changes the ordering contract consumed by `_lock_and_expand()` | Blocking data-loss regression |
@@ -152,11 +166,11 @@ Those GPU-test failures have no evident causal connection to the host-side tar-w
 ### ❌ REQUIRED (Blocking)
 
 1. Restore deterministic file-before-directory ordering in `add_tree()` and add an integration regression through the devel-wheel expansion path.
+2. Define and test installed mtime behavior for preserving SDK consumers, especially `rocm-sdk-devel` and native DEB packages.
 
 ### ⚠️ Required before merge
 
-1. Resolve or explicitly define the installed mtime behavior for `rocm-sdk-devel`, with coverage for upgrade/incremental-build semantics.
-2. Rerun the cancelled Linux wheel coverage after the workflow's unrelated failures are cleared or selectively rerun those jobs.
+1. Rerun the cancelled Linux wheel coverage after the workflow's unrelated failures are cleared or selectively rerun those jobs.
 
 ---
 
@@ -164,6 +178,6 @@ Those GPU-test failures have no evident causal connection to the host-side tar-w
 
 **Approval Status: ❌ CHANGES REQUESTED**
 
-The artifact-archive normalization is otherwise convincing, but the shared `add_tree()` refactor currently violates an ordering assumption in the devel installer and demonstrably drops an archived empty directory. Fixing the ordering is small and should happen before merge. The epoch-mtime behavior should also be treated as an installed SDK semantic decision, not merely archive metadata.
+The generic artifact-archive normalization is otherwise convincing, but the shared `add_tree()` refactor currently violates an ordering assumption in the devel installer and demonstrably drops an archived empty directory. Fixing the ordering is small and should happen before merge. The epoch-mtime behavior should also be treated as an installed SDK semantic decision across wheels and native packages, not merely archive metadata; the current pipeline preserves it into DEBs but discards it from release tarballs and RPMs.
 
 Generated with Codex
