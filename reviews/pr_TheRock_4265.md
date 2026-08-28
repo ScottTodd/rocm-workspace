@@ -1,106 +1,169 @@
 # PR Review: Make artifact archives reproducible
 
 * **PR:** https://github.com/ROCm/TheRock/pull/4265
-* **Author:** PeterCDMcLean
+* **Author:** `PeterCDMcLean`
 * **Branch:** `users/pmclean/normalize_archive_metadata` → `main`
-* **Reviewed:** 2026-05-04
-* **Issue:** Part of https://github.com/ROCm/TheRock/issues/4202
+* **Head:** `2c4e68029adf728922cbc519d54930eb4b619505`
+* **Reviewed:** 2026-08-28
+* **Focus:** Correctness, side effects, and unintended consequences
 
 ---
 
 ## Summary
 
-Normalizes tar metadata in artifact archives to ensure identical file content produces identical archives. Three changes:
-1. Sets mtime to 0 (Unix epoch) for all archive entries
-2. Sets uid/gid to 0 and uname/gname to "root" for consistency
-3. Sorts files before adding to ensure deterministic ordering
+This PR makes artifact archives and the `rocm-sdk-devel` wheel's secondary tarball deterministic by normalizing tar member timestamps and ownership and by sorting member insertion order. The artifact-archive portion is well contained: its primary reader (`ArtifactPopulator`) copies file bytes and executable bits rather than restoring tar mtimes. The devel-wheel portion has a more complex, order-sensitive extractor and exposes two unintended consequences.
 
-**Net changes:** +30 lines, -3 lines across 1 file (`build_tools/fileset_tool.py`)
+**Net changes:** +280/-10 across five Python files, including nine new tests.
 
 ---
 
 ## Overall Assessment
 
-**✅ APPROVED** - Clean, well-scoped change that solves a real problem correctly.
+**❌ CHANGES REQUESTED** — the reproducibility objective is sound, but the new mixed file/directory ordering causes a reproducible data-loss regression when the devel wheel is expanded. Epoch mtimes also create an incremental-build hazard after devel-wheel upgrades that should be addressed or explicitly accepted before merge.
 
 **Strengths:**
 
-- Minimal, focused diff — only touches what's needed
-- Uses the standard Python `tarfile` filter API (idiomatic approach)
-- Good docstring on `_normalize_tarinfo` explaining extraction behavior
-- Thorough testing: ran CI twice with no changes and documented remaining diffs
-- All remaining diffs are in compiled binary content (GPU kernels, static libs), not archive metadata — confirming the fix works
-
-**No blocking or important issues.**
+- The manifest remains first in artifact archives, preserving `ArtifactPopulator`'s streaming contract.
+- Modes, file types, sizes, symlink targets, and the hardlink relationship are not erased by `normalize_tarinfo()`.
+- The new archive-level regression tests exercise real files and prove byte-for-byte stability after mtime changes.
+- Artifact and Python-package build jobs passed on both Linux and Windows; the Windows wheel test also passed.
 
 ---
 
-## Detailed Review
+## Findings
 
-### 1. `_normalize_tarinfo` function
+### ❌ BLOCKING: Alphabetically mixing directories with files can delete devel-wheel entries during expansion
 
-The implementation is correct and complete. All non-deterministic metadata fields are normalized:
-- `mtime = 0` — eliminates timestamp variation
-- `uid/gid = 0` — eliminates builder identity variation
-- `uname/gname = "root"` — consistent with uid/gid=0
+[`add_tree()` combines `filenames` and `dirnames` before sorting](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/_therock_utils/archive_util.py#L44-L55), and [`populate_devel_files()` now uses that helper](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/_therock_utils/py_packaging.py#L650-L661). This changes an important property of the old loop: every file in a directory was emitted before every child directory.
 
-File permissions are intentionally preserved (mode is not touched), which is the right call.
+The runtime devel-wheel extractor is order-sensitive. On the first file or symlink in a parent, [`_lock_and_expand()` deletes that entire parent directory before extracting the member](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/packaging/python/templates/rocm/src/rocm_sdk/_devel.py#L416-L444). Directory members are cleaned and extracted separately [later in the same loop](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/packaging/python/templates/rocm/src/rocm_sdk/_devel.py#L493-L498).
 
-### 2. File ordering
+If a child directory sorts before a sibling file, the extractor creates the directory and then deletes it when the file causes the parent cleanup. Non-empty directories are recreated later when their children are extracted, but empty directories are lost, and recreated directories no longer necessarily retain the archived directory metadata.
 
-`sorted(pm.all.items())` sorts by dict key (relative path string), providing stable lexicographic ordering. This is correct and sufficient.
+I reproduced this against the PR head's real `add_tree()` and real `_lock_and_expand()` with a tree containing `pkg/a_empty/` and `pkg/z_file.txt`:
 
-### 3. Filter application
+```text
+> D:\projects\TheRock\.venv\Scripts\python.exe repro_devel_old_order.py
+archive members: ['pkg/z_file.txt', 'pkg/a_empty']
+file exists: True
+empty directory exists: True
 
-The `filter=_normalize_tarinfo` parameter is applied to both `arc.add()` call sites:
-- The manifest file (line ~107-111 in the PR)
-- Each content file (line ~121-127 in the PR)
+> D:\projects\TheRock\.venv\Scripts\python.exe repro_devel_order.py
+archive members: ['pkg/a_empty', 'pkg/z_file.txt']
+file exists: True
+file mtime: 0.0
+empty directory exists: False
+```
 
-This is complete for the `do_artifact_archive` function.
+**Required action:** preserve deterministic file-before-directory order. A streaming implementation also avoids materializing the entire `os.walk()` result:
+
+```python
+for root, dirnames, filenames in os.walk(source_dir):
+    dirnames.sort()  # Also controls os.walk traversal order.
+    for name in sorted(filenames):
+        add_member(root, name)
+    for name in dirnames:
+        add_member(root, name)
+```
+
+Add a regression that sends an empty directory plus a later-sorting sibling file through `add_tree()` and the devel expansion path, then verifies that the directory survives. The current exact-order unit test instead pins the unsafe mixed ordering.
+
+### ⚠️ IMPORTANT: Epoch mtimes can suppress downstream rebuilds after a devel-wheel upgrade
+
+[`normalize_tarinfo()` forces every member mtime to zero](https://github.com/ROCm/TheRock/blob/2c4e68029adf728922cbc519d54930eb4b619505/build_tools/_therock_utils/archive_util.py#L12-L27). The devel-wheel extractor calls `tarfile.extract()` for regular files and directories, which restores that value; the reproduction above confirms an installed file mtime of `0.0`.
+
+That matters because `rocm-sdk-devel` contains headers, libraries, and build metadata intended to be consumed by build systems. After upgrading the wheel in an existing environment, changed SDK inputs still appear older than already-built external objects and executables. Timestamp-based tools such as Ninja or Make can therefore skip recompilation or relinking unless users clean their build trees manually.
+
+This risk is narrower for normal artifact workflows:
+
+- `ArtifactPopulator` writes file contents itself and does not restore tar mtimes.
+- Bootstrap paths create fresh `.prebuilt` markers, which drive new stage stamps.
+- `install_rocm_from_artifacts.py` removes and recreates its output directory before extraction.
+
+It remains directly applicable to the new `py_packaging.py` call site.
+
+**Required action:** decide and test the installed-time semantics for the devel wheel. At minimum, document that an SDK wheel upgrade requires a clean downstream build; silently presenting changed inputs as January 1970 is a surprising behavioral change.
+
+#### Options and tradeoffs
+
+The artifact archives and the devel-wheel tarball do not necessarily need the same policy. Artifact readers generally copy into a clean tree or ignore archived mtimes, while the devel wheel installs build inputs into an environment that can outlive downstream build outputs.
+
+| Option | Pros | Cons |
+|---|---|---|
+| **1. Normalize archive mtimes everywhere, but set devel files to expansion time when installing** | Keeps CI and release archive bytes reproducible; identical archives retain identical hashes; an SDK upgrade makes installed headers and libraries newer than existing downstream outputs; cleanly separates distribution reproducibility from installed filesystem semantics | Installed trees are not timestamp-reproducible; reinstalling identical contents can trigger unnecessary downstream rebuilds; extraction must restore file and directory times carefully after all members are written |
+| **2. Store a deterministic, version-advancing timestamp such as `SOURCE_DATE_EPOCH`** | Archive and installed mtimes remain deterministic; later releases will usually look newer and trigger downstream rebuilds; follows a common reproducible-build convention | Requires an explicit timestamp source in every archive-producing path; commit or release timestamps are not guaranteed to be monotonic in every workflow; identical file trees built from different commits can receive different archive hashes, weakening the PR's “same content, same SHA” goal |
+| **3. Normalize artifact archives only; preserve real mtimes in the devel-wheel tarball** | Directly solves the generic-artifact collision prerequisite in issue #4202; preserves current devel-wheel installation behavior; smallest behavioral change | The devel wheel remains non-reproducible; rebuilding the same release can produce different wheel hashes; gives the two archive writers different policies and gives up part of this PR's expanded scope |
+| **4. Normalize only in CI; preserve real mtimes for release builds** | CI jobs that contend for an artifact key can produce stable hashes; non-CI release installs retain useful mtimes | “CI” and “release” overlap because releases are commonly built in CI; identical source produces different archives across environments; release artifacts remain non-reproducible; CI no longer validates the archive behavior shipped by the release path; an ambient environment check introduces hidden policy into a low-level utility |
+| **5. Keep epoch mtimes everywhere and require clean downstream builds after upgrades** | Simplest implementation; strongest byte-for-byte reproducibility; no additional policy or timestamp plumbing | Preserves the stale incremental-build risk; shifts cleanup cost to every devel-wheel user; easy to miss unless prominently documented; makes installed timestamps uninformative |
+| **6. Preserve real mtimes and make #4202 compare a canonical content hash instead of the compressed archive SHA** | Conflict detection can ignore metadata and compression differences directly; installed timestamps remain useful; can define exactly which attributes are semantically significant | Substantially more implementation and format complexity; archives themselves remain non-reproducible; requires producing, storing, and validating a second digest definition; broader than this prerequisite PR |
+
+Option 1 has the cleanest separation of concerns if both reproducible release wheels and safe incremental upgrades are requirements. Option 3 is the lowest-risk change if reproducibility is only needed for generic artifact collision detection. Option 4 is workable only if “CI” and “release” are explicit, mutually exclusive build modes; that is not true for the current GitHub Actions release model, so an environment-variable check alone would be fragile.
 
 ---
 
-## Analysis of Test Results
+## Side-Effect Inventory
 
-The artifact comparison file (`artifact_comparison_results.txt`) shows 56 artifacts still differ between builds. Examining the changed files reveals they are **all compiled binaries**:
+| Change | Observable effect | Assessment |
+|---|---|---|
+| `mtime = 0` | `tar -tvf` and preserving extractors show January 1970; wheel expansion installs epoch-dated SDK files | Undesirable for incremental upgrades; see finding above |
+| `uid/gid = 0`, `uname/gname = root` | Root or `--same-owner` extraction produces root-owned files instead of CI-builder ownership | Usually desirable for distribution archives; non-root extraction remains owned by the extracting user |
+| Sorted artifact members | Archive hashes no longer depend on directory enumeration order | Desirable; manifest-first contract is preserved |
+| Mixed sorted files/directories in `add_tree()` | Changes the ordering contract consumed by `_lock_and_expand()` | Blocking data-loss regression |
+| `sorted(os.walk(...))` | Holds every yielded directory and its file lists until the walk completes | Avoidable peak-memory increase for large SDK trees; the proposed streaming fix removes it |
+| Stable archive bytes | All archive hashes/cache keys change once, and later identical rebuilds converge | Expected migration effect |
 
-| Category | Examples |
-|----------|----------|
-| GPU kernel objects | `.hsaco`, `.co` (Tensile libraries) |
-| Binary data | `.dat` (TensileLibrary lazy loading data) |
-| Static libraries | `.a` (libbacktrace, libcap) |
-| Shared libraries | `.so` (hipsparselt kernel) |
-| Build system | `CTestTestfile.cmake`, `.kpack` |
+Hardlink anchor names may change because sorting chooses a deterministic first path, but the extracted hardlink relationship remains equivalent. Compression size may also move slightly because member order changes; neither appears correctness-sensitive.
 
-These diffs are due to non-deterministic compilation output (embedded timestamps in object files, parallelism-dependent codegen, etc.) — completely outside the scope of this PR. The PR correctly addresses the "same content, different hash" problem caused by tar metadata.
+---
+
+## Test and CI Evidence
+
+### Local tests at the exact PR head
+
+The source was exported from commit `2c4e68029adf728922cbc519d54930eb4b619505` into scratch and tested with TheRock's venv:
+
+```text
+> D:\projects\TheRock\.venv\Scripts\python.exe -m unittest tests.fileset_tool_test tests.archive_util_test
+Ran 20 tests in 1.235s
+
+OK (skipped=1)
+```
+
+The nine PR-added tests also passed independently in 0.562 seconds. They do not exercise `add_tree()` through `_lock_and_expand()`, which is why the ordering regression is not detected.
+
+### PR checks
+
+At review time, `gh pr checks` reported 137 passing, four failing, six cancelled, and 33 skipped checks.
+
+- [Linux Python package build](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98618178546): passed.
+- [Windows Python package build](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98635316187): passed.
+- [Windows ROCm wheel test](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98639109147): passed.
+- Linux wheel tests were cancelled after other failures in the workflow.
+- [Windows rocFFT](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98637726834) failed because `rocfft-test_quick_suite` hit its 600-second CTest timeout.
+- The two Linux rocGDB checks failed in jobs explicitly labeled `(xfail)`, including `gdb.dwarf2/dw2-param-error.exp` and timeout cases: [GPU job](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98618801724), [corefile job](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98618801207).
+- [CI Summary](https://github.com/ROCm/TheRock/actions/runs/33094183267/job/98665579769) failed as a consequence.
+
+Those GPU-test failures have no evident causal connection to the host-side tar-writing diff, but the overall PR CI is not green.
 
 ---
 
 ## Recommendations
 
-### 💡 SUGGESTION: Consider the `py_packaging.py` archive path
+### ❌ REQUIRED (Blocking)
 
-[`_therock_utils/py_packaging.py:550-556`](https://github.com/ROCm/TheRock/blob/main/build_tools/_therock_utils/py_packaging.py#L550-L556) also creates tar archives (for devel tarballs) without metadata normalization or sorted file ordering (`os.walk` order is filesystem-dependent). If reproducibility matters there too, the same pattern could be applied.
+1. Restore deterministic file-before-directory ordering in `add_tree()` and add an integration regression through the devel-wheel expansion path.
 
-### 📋 FUTURE WORK: Non-deterministic compilation
+### ⚠️ Required before merge
 
-The 56 remaining non-reproducible artifacts are all due to compiled binary content. Fully reproducible builds would require:
-- Deterministic GPU kernel compilation (Tensile/hipBLASLt/hipSPARSELt)
-- Deterministic builds of system deps (libbacktrace, libcap)
-- Stripping/normalizing timestamps embedded in object files
-
-This is a much larger effort tracked by issue #4202.
-
----
-
-## Testing Recommendations
-
-The CI-based "build twice and compare" test plan is appropriate for this change. No unit test is strictly necessary — the behavior is straightforward and the integration test (CI comparison) provides stronger validation than a unit test would.
+1. Resolve or explicitly define the installed mtime behavior for `rocm-sdk-devel`, with coverage for upgrade/incremental-build semantics.
+2. Rerun the cancelled Linux wheel coverage after the workflow's unrelated failures are cleared or selectively rerun those jobs.
 
 ---
 
 ## Conclusion
 
-**Approval Status: ✅ APPROVED**
+**Approval Status: ❌ CHANGES REQUESTED**
 
-Clean, correct implementation using standard Python APIs. The test results confirm it eliminates archive-metadata-based hash differences while correctly leaving compiled-binary differences alone. Ready to merge.
+The artifact-archive normalization is otherwise convincing, but the shared `add_tree()` refactor currently violates an ordering assumption in the devel installer and demonstrably drops an archived empty directory. Fixing the ordering is small and should happen before merge. The epoch-mtime behavior should also be treated as an installed SDK semantic decision, not merely archive metadata.
+
+Generated with Codex
