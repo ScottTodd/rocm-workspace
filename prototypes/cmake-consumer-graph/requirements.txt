@@ -1,0 +1,2 @@
+cmake-parser==0.9.2
+pytest==9.0.3
