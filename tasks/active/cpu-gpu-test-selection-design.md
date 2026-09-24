@@ -11,6 +11,39 @@ specifies which parts belong in each PR.
 Context: [TheRock PR 8465](https://github.com/ROCm/TheRock/pull/8465).
 Inspected local TheRock revision `e323b0e8b` and the PR diff on 2026-09-24.
 
+## Background - conversation prompts
+
+```
+› I'd like some help proposing an alternate design for https://github.com/ROCm/TheRock/pull/8465. My desired
+  architecture is:
+  * build_tools/github_actions/configure_multi_arch_ci.py _expand_build_config_for_platform() function stops treating
+  `test_runs_on = ""` as meaning "disable tests" but rather "no available runner for GPU tests, CPU tests may still be
+  enabled"
+  * possibly the `family_info` dictionary should be generalized to carry `test-runs-on-gpu`, `test-runs-on-multigpu`,
+  `test-runs-on-cpu`, etc.
+  * .github/workflows/multi_arch_ci_linux.yml test_artifacts_per_family expands the `matrix: family_info:
+  ${{ fromJSON(inputs.build_config).per_family_info }}` then test_artifacts.yml uses the data there together with
+  test_tools/determine_rocm_test_dependencies.py and build_tools/github_actions/fetch_test_configurations.py. Any code
+  in there that assumes "no gpu test runner" means "no tests" should be updated, including `if:
+  ${{ inputs.test_runs_on != '' }}` in test_artifacts.yml
+  * fetch_test_configurations.py can decide which tests to run based on provided labels (CPU only, GPU, subproject tests
+  included/excluded based on files modified, labels set, etc.)
+
+  Does that sound plausible? Let's work through the design a bit with the goal of providing a markdown plan that could
+  be implemented or (ideally) a prototype branch showing the shape of the changes
+
+...
+
+› test_sanity_check is interesting, we could split the matrix into CPU (which doesn't wait for test_sanity_check) and
+  GPU (which does), or we could merge test_sanity_check (as test_sanity_check_gpu maybe?) into the test_component
+  matrix. The current design aims to skip running subproject tests if sanity checks fail, but I think in practice we see
+  very few PRs where that is the case (pretty much only changes to the compiler and core runtimes can affect the sanity
+  check tests - library tests like hipblaslt can't possibly affect them)
+
+  we could also redesign the "Route to the appropriate runner" comment code conditions under test_components. Always
+  pass the specific runner as computed by the script, without needing to pass so many fields and choose in the yml
+```
+
 ## Objective
 
 An empty GPU runner means GPU tests cannot run. CPU tests remain eligible when
