@@ -358,6 +358,27 @@ Commit guidance:
 - NEVER push without explicit authorization.
 - Do NOT amend commits without explicit authorization.
 
+### Worktrees
+
+Use worktrees when requested, following [Working with worktrees](worktrees.md).
+
+- Create new TheRock worktrees under
+  `D:/scratch/codex/TheRock-worktrees/<short-description>`, with matching
+  `users/scotttodd/<short-description>` branches. Existing worktrees may stay
+  at their current paths.
+- Inspect existing worktrees, branches, and local changes first. Fetch
+  `origin/main` before creating new work unless the user specifies another
+  base; record the base commit used.
+- Preserve the main checkout and active builds. Run edits and checks in the
+  intended worktree; do not switch the main checkout or reuse its build tree.
+- When splitting changes, use a common base for independent branches and
+  document dependencies for stacked branches. Preserve the original change
+  set until all changes are accounted for and each branch is verified.
+- Leave changes unstaged for review unless staging or committing is
+  authorized. Batch authorized commits for hardware signing; never bypass it.
+- Remove worktrees or branches only when requested, after checking merge
+  status and local files. Do not automatically relocate existing worktrees.
+
 ## Review Workflow
 
 Code reviews happen at two levels: comprehensive reviews and focused reviews.
