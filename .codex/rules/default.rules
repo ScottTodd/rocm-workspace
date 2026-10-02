@@ -100,3 +100,25 @@ prefix_rule(
         "git -C D:/projects/rocm-workspace push",
     ],
 )
+
+prefix_rule(
+  pattern = [
+      "git",
+      "-c", "safe.directory=D:/projects/TheRock",
+      "-C", "D:/projects/TheRock",
+      "fetch", "origin", "main",
+  ],
+  decision = "allow",
+  justification = "Allow fetching origin/main so branchs can start from a fresh base",
+)
+
+prefix_rule(
+  pattern = [
+      "git",
+      "-c", "safe.directory=D:/projects/TheRock",
+      "-C", "D:/projects/TheRock",
+      "worktree", "add",
+  ],
+  decision = "allow",
+  justification = "Allow creating new worktrees",
+)
