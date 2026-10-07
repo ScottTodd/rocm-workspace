@@ -271,3 +271,34 @@ Baseline gfx1151 configure durations are rocPRIM_tests **46.45 s**, hipCUB **31.
 Logs saved as `pr-win1151-configure.log` and `base-win1151-{rocPRIM_tests,hipCUB,rocThrust}-configure.log` under the review scratch directory. Sources: https://therock-ci-artifacts.s3.amazonaws.com/37667630158-windows/logs/math-libs/gfx1151/hipCCL_tests_configure.log and corresponding baseline logs under `37620849077-windows/logs/math-libs/gfx1151/`.
 
 Generated with Codex.
+
+## Follow-up: ecosystem include-path compatibility
+
+The installed Windows `roc::rocprim` target exports both `<prefix>/include/hipccl` and `<prefix>/include`; `roc::rocprim_hip` links it transitively. Existing component package names remain usable. Finding a package alone does not supply include directories to a consumer target. `examples/cpp-sdk-user/CMakeLists.txt:78-83` only discovers and prints the prim package versions, so it does not test compilation against their headers.
+
+Source inspection of current upstream consumers (2026-10-07):
+
+- PyTorch `cmake/public/LoadHIP.cmake` discovers rocprim/hipcub/rocthrust and collects each package's INCLUDE_DIR into ROCM_INCLUDE_DIRS: compatible with relocation. Its separate `torch/utils/cpp_extension.py:include_paths` only adds ROCM_HOME/include for HIP extensions, with no hipccl path: legacy-layout dependency for extensions including these headers.
+- CuPy `install/cupy_builder/install_build.py` adds ROCm/include and explicitly checks ROCm/include/hipcub, raising `Please install hipCUB and retry` if absent. `cupy/_environment.py` also probes include/hipcub. This requires an actual compatibility path, not merely a compiler default include-path update.
+- ROCm/aiter `csrc/kernels/sample_kernels.cu` includes rocprim/rocprim.hpp; `aiter/jit/core.py` uses its own `aiter/jit/utils/cpp_extension.py`, whose include-path function adds runtime/devel include roots but no include/hipccl. A concrete ROCm-org consumer of the legacy layout.
+- Local rocm-libraries rocSPARSE library/CMakeLists.txt:133 and rocSOLVER library/src/CMakeLists.txt:434 link roc::rocprim, so receive the relocated include directory. hipthreads examples link roc::rocthrust as well.
+
+Sources: https://github.com/pytorch/pytorch/blob/main/cmake/public/LoadHIP.cmake ; https://github.com/pytorch/pytorch/blob/main/torch/utils/cpp_extension.py ; https://github.com/cupy/cupy/blob/main/install/cupy_builder/install_build.py ; https://github.com/cupy/cupy/blob/main/cupy/_environment.py ; https://github.com/ROCm/aiter/blob/main/aiter/jit/utils/cpp_extension.py ; https://github.com/ROCm/aiter/blob/main/csrc/kernels/sample_kernels.cu . Retrieved through authenticated gh api repos/<repo>/contents/<path> with raw Accept header; source inspection, not full downstream builds.
+
+Linux compatibility symlinks preserve these old paths. Windows disables them and therefore changes the include-layout contract immediately. CuPy/AITER examples establish ecosystem reliance, not verified Windows support or a reproduced Windows application build failure. Recommend portable compatibility header directories (copies or generated forwarding headers) on Windows during migration, preferably implemented in hipCCL's install rules and selected by TheRock. Add SDK compile smoke coverage for the imported targets and, if promised, the plain include-root interface. Updating hipcc search paths alone cannot fix explicit filesystem probes.
+
+Generated with Codex.
+
+### PyTorch Windows CI evidence (job 113012698210)
+
+Downloaded the full job log using `gh api repos/ROCm/TheRock/actions/jobs/113012698210/logs > D:/scratch/codex/pr8762/pytorch-job-113012698210.log`. Job succeeded, release/2.12, Python 3.12. Build-wheel step 21:02:22–22:19:08 UTC (76m46s). CMake invocation explicitly BUILD_TEST=False (log line 13081); discovers rocprim 5.0.0, hipcub/rocthrust 4.7.0 (13513–13515). Actual compiler include stacks resolve `_rocm_sdk_devel/include/hipccl/thrust/complex.h` (569267 onward), confirming use of relocated headers. Wheel built successfully (684449), 935814136 bytes (684724). cpp_extension.py appears only in copy/package messages; no extension test execution found. Protobuf cpp_extension.cc is unrelated. The wheel sanity helper only checks filenames and sizes, not imports, GPU operations, or extension compilation. Thus CI positively validates the core CMake build with the relocated headers, but provides no evidence that the torch.utils.cpp_extension consumer path works.
+
+Generated with Codex.
+
+### Local controlled include-layout experiment
+
+Ran `D:/projects/TheRock/.venv/Scripts/python.exe D:/scratch/codex/pr8762/include-layout-probe/run.py`. Reproducer and complete compiler commands/output: `D:/scratch/codex/pr8762/include-layout-probe/{run.py,results.txt}`. Uses ROCm clang++, -std=c++17 -nostdinc -c, against math-libs/hipCCL/stage (only include/hipccl exists). For rocprim/rocprim.hpp, hipcub/hipcub.hpp, and thrust/complex.h, compiler __has_include probes all fail with -I<stage>/include and all pass with -I<stage>/include/hipccl or both. A translation unit actually including rocprim/rocprim_version.hpp and hipcub/hipcub_version.hpp and asserting their version macros produces the same fail/pass/pass matrix. CuPy's old directory probe is false, new path true. This isolates header lookup; it does not compile the full GPU APIs or prove runtime compatibility.
+
+Important local-build confound: build/dist/rocm/include/rocprim exists as a real directory dated September 15, despite hipCCL/stage having only include/hipccl. The merged local dist tree can mask the missing legacy-layout compatibility, so it was not used as the probe's header prefix. No active build files modified.
+
+Generated with Codex.
