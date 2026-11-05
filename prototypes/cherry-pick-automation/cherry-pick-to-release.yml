@@ -1,0 +1,78 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+name: Cherry-pick to release
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Target repository
+        type: choice
+        options: [TheRock, rocm-systems, rocm-libraries]
+        required: true
+      release_branch:
+        description: release/therock-X.Y or release/bkc/therock-X.Y-YYYYMMDD
+        type: string
+        required: true
+      commits:
+        description: Commit SHAs in application order, separated by spaces or commas
+        type: string
+        required: true
+      jira_id:
+        description: JIRA key (required for regular releases)
+        type: string
+      reason:
+        description: Why this change belongs in the release (optional)
+        type: string
+      dry_run:
+        description: Prepare commits and preview the PR without publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  cherry-pick:
+    # Configure this label for the runner fleet with the standard Git mirrors.
+    runs-on: ${{ vars.AUTOMATION_RUNNER }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      # Imported by fetch_sources.py even when DVC downloads are disabled.
+      - run: python -m pip install boto3
+
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app
+        with:
+          app-id: ${{ inputs.repository == 'rocm-libraries' && secrets.ROCM_LIBRARIES_APP_ID || secrets.ROCM_SYSTEMS_APP_ID }}
+          private-key: ${{ inputs.repository == 'rocm-libraries' && secrets.ROCM_LIBRARIES_APP_PRIVATE_KEY || secrets.ROCM_SYSTEMS_APP_PRIVATE_KEY }}
+          owner: ROCm
+          repositories: ${{ inputs.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Prepare and publish the cherry-pick
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPOSITORY: ${{ inputs.repository }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          COMMITS: ${{ inputs.commits }}
+          JIRA_ID: ${{ inputs.jira_id }}
+          RELEASE_REASON: ${{ inputs.reason }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash build_tools/automation/cherry_pick.sh
